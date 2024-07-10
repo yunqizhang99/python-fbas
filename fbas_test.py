@@ -43,6 +43,7 @@ class FBASTest(unittest.TestCase):
 
     def test_2(self):
         self.assertTrue(set(fbas1.to_graph().nodes) == {1,2,3,4,q1})
+        self.assertEqual(set(fbas1.to_graph().edges), {(1,q1),(2,q1),(3,q1),(4,q1),(q1,1),(q1,2),(q1,3),(q1,4)})
 
     def test_3(self):
         self.assertTrue(fbas1.closure([1,2]) == {1,2,3,4})

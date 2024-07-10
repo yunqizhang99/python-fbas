@@ -58,11 +58,11 @@ class FBAS:
         qsets = frozenset().union(*(qs.all_QSets() for qs in self.qset_map.values())) \
             | frozenset(self.qset_map.values())
         # create a graph with a node for each validator and each qset
-        G = nx.Graph()
+        G = nx.DiGraph()
         G.add_edges_from(list(self.qset_map.items()))
         for qs in qsets:
-            for iqs in qs.innerQSets:
-                G.add_edge(qs, iqs)
+            for x in qs.validators | qs.innerQSets:
+                G.add_edge(qs, x)
         return G
 
     def closure(self, S):
