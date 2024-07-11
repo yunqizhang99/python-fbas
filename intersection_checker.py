@@ -1,8 +1,7 @@
-from fbas import *
+from itertools import combinations
+from pysat.solvers import Solver
 from pysat.card import *
 from pysat.formula import *
-from pysat.solvers import Solver
-from itertools import combinations
 
 def check_intersection(fbas):
 
@@ -15,17 +14,19 @@ def check_intersection(fbas):
     If the constraints are satisfiable, then we have two disjoint quorums.
     Otherwise, we know that no two disjoint quorums exist.
     """
-    constraints = []  # cs will hold the constraints
+    constraints = []
     for q in ['A', 'B']:
         # q is not empty:
         constraints += [Or(*[Atom((q,v)) for v in fbas.qset_map.keys()])]
         # each member must have a slice in the quorum:
 
         def qset_satisfied(qs):
-            slices = list(combinations(qs.validators | qs.innerQSets, qs.threshold))
+            slices = list(combinations(qs.validators | qs.inner_qsets, qs.threshold))
             return Or(*[And(*[Atom((q, x)) for x in s]) for s in slices])
-        constraints += [Implies(Atom((q, v)), qset_satisfied(fbas.qset_map[v])) for v in fbas.qset_map.keys()]
-        constraints += [Implies(Atom((q, qs)), qset_satisfied(qs)) for qs in fbas.all_QSets()]
+        constraints += [Implies(Atom((q, v)), qset_satisfied(fbas.qset_map[v]))
+                        for v in fbas.qset_map.keys()]
+        constraints += [Implies(Atom((q, qs)), qset_satisfied(qs))
+                        for qs in fbas.all_qsets()]
     # no validator can be in both quorums:
     for v in fbas.qset_map.keys():
         constraints += [Neg(And(Atom(('A', v)), Atom(('B', v))))]

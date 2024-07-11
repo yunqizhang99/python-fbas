@@ -24,8 +24,8 @@ class QSetTest(unittest.TestCase):
     def test_3(self):
         self.assertTrue(q1.all_validators() == frozenset({1,2,3,4}))
         self.assertTrue(q2.all_validators() == frozenset({'a',11,12,13,21,22,23,31,32,33}))
-        self.assertTrue(q1.all_QSets() == frozenset({q1}))
-        self.assertTrue(q2.all_QSets() == frozenset({q2,o1,o2,o3}))
+        self.assertTrue(q1.all_qsets() == frozenset({q1}))
+        self.assertTrue(q2.all_qsets() == frozenset({q2,o1,o2,o3}))
 
     def test_4(self):
         self.assertTrue(q1.blocked([1,2]))

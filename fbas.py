@@ -6,52 +6,52 @@ import networkx as nx
 class QSet:
     threshold: int
     validators: frozenset
-    innerQSets: frozenset
+    inner_qsets: frozenset
 
     def __post_init__(self):
         # TODO check well-formedness
         pass
 
     def __bool__(self):
-        return bool(self.validators | self.innerQSets)
+        return bool(self.validators | self.inner_qsets)
 
     def __str__(self):
-        return f"QSet({self.threshold},{str(set(self.validators)) if self.validators else '{}'},{str(set(self.innerQSets)) if self.innerQSets else '{}'})"
+        return f"QSet({self.threshold},{str(set(self.validators)) if self.validators else '{}'},{str(set(self.inner_qsets)) if self.inner_qsets else '{}'})"
 
     @staticmethod
-    def make(threshold, validators, innerQSets):
-        return QSet(threshold, frozenset(validators), frozenset(innerQSets))
+    def make(threshold, validators, inner_qsets):
+        return QSet(threshold, frozenset(validators), frozenset(inner_qsets))
 
     def sat(self, validators):
         """Whether the agreement requirements encoded by this QSet are satisfied by the given set of validators."""
-        sat_innerQSets = {iqs for iqs in self.innerQSets if iqs.sat(validators)}
-        return len((self.validators & set(validators)) | sat_innerQSets) >= self.threshold
+        sat_inner_qsets = {iqs for iqs in self.inner_qsets if iqs.sat(validators)}
+        return len((self.validators & set(validators)) | sat_inner_qsets) >= self.threshold
 
-    def all_QSets(self):
-        """Returns the set containing self and all innerQSets appearing (recursively) in this QSet."""
-        return frozenset((self,)) | self.innerQSets | frozenset().union(*(iqs.all_QSets() for iqs in self.innerQSets))
+    def all_qsets(self):
+        """Returns the set containing self and all inner QSets appearing (recursively) in this QSet."""
+        return frozenset((self,)) | self.inner_qsets | frozenset().union(*(iqs.all_qsets() for iqs in self.inner_qsets))
 
     def blocked(self, validators):
         """
         Whether this QSet is blocked by the given set of validators (meaning all slices include a member of the set validators).
         """
         def directly_blocked(q, xs):
-            members = (q.validators | q.innerQSets)
+            members = (q.validators | q.inner_qsets)
             return len(members & xs) > len(members) - q.threshold
         def _blocked(xs):
-            return xs | {q for q in self.all_QSets() if directly_blocked(q, xs)}
+            return xs | {q for q in self.all_qsets() if directly_blocked(q, xs)}
         return self in fixpoint(_blocked, frozenset(validators))
 
     def all_validators(self):
         """Returns the set of all validators appearing (recursively) in this QSet."""
-        return self.validators | set().union(*(iqs.all_validators() for iqs in self.innerQSets))
+        return self.validators | set().union(*(iqs.all_validators() for iqs in self.inner_qsets))
 
 @dataclass
 class FBAS:
     qset_map: dict
 
     def __post_init__(self):
-        # TODO: check well-formedness (thresholds range, all validators in qsets are in the FBAS, etc.)
+        # TODO: check well-formedness (thresholds range,all validators in qsets are in the FBAS, etc.)
         pass
 
     def is_quorum(self, validators):
@@ -63,21 +63,22 @@ class FBAS:
 
     def to_graph(self):
         # first collect all the qsets appearing anywhere
-        qsets = frozenset().union(*(qs.all_QSets() for qs in self.qset_map.values()))
+        qsets = frozenset().union(*(qs.all_qsets() for qs in self.qset_map.values()))
         # create a graph with a node for each validator and each qset
-        G = nx.DiGraph()
-        G.add_edges_from(list(self.qset_map.items()))
+        g = nx.DiGraph()
+        g.add_edges_from(list(self.qset_map.items()))
         for qs in qsets:
-            for x in qs.validators | qs.innerQSets:
-                G.add_edge(qs, x)
-        return G
+            for x in qs.validators | qs.inner_qsets:
+                g.add_edge(qs, x)
+        return g
 
     def closure(self, S):
         """Computes the closure of the set of validators S"""
         def _blocked(xs):
-            return {v for v in self.qset_map.keys() if self.qset_map[v].blocked(xs)} | xs
+            return {v for v, qs in self.qset_map.items() if qs.blocked(xs)} | xs
         return fixpoint(_blocked, set(S))
 
-    def all_QSets(self):
+    def all_qsets(self):
         """Returns the set containing all QSets appearing in this FBAS."""
-        return frozenset().union(*(qs.all_QSets() for qs in self.qset_map.values()))
+        return frozenset().union(*(qs.all_qsets() for qs in self.qset_map.values()))
+    

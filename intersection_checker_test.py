@@ -1,5 +1,6 @@
 import unittest
-from intersection_checker import *
+from intersection_checker import check_intersection
+from fbas import QSet, FBAS
 
 q1 = QSet.make(3, [1,2,3,4],[])
 fbas1 = FBAS({1 : q1, 2 : q1, 3 : q1, 4 : q1})
