@@ -9,8 +9,11 @@ class QSet:
     inner_qsets: frozenset
 
     def __post_init__(self):
-        # TODO check well-formedness
-        pass
+        valid = (self.threshold > 0
+            and self.threshold <= len(self.validators) + len(self.inner_qsets)
+            and all(isinstance(qs, QSet) for qs in self.inner_qsets))
+        if not valid:
+            raise Exception(f"QSet failed validation: {self}")
 
     def __bool__(self):
         return bool(self.validators | self.inner_qsets)
@@ -45,14 +48,27 @@ class QSet:
     def all_validators(self):
         """Returns the set of all validators appearing (recursively) in this QSet."""
         return self.validators | set().union(*(iqs.all_validators() for iqs in self.inner_qsets))
+    
+    @staticmethod
+    def from_stellarbeat_json(data : dict):
+        return QSet.make(data['threshold'], data['validators'],
+                         [QSet.from_stellarbeat_json(qs) for qs in data['innerQuorumSets']])
 
 @dataclass
 class FBAS:
     qset_map: dict
 
     def __post_init__(self):
-        # TODO: check well-formedness (thresholds range,all validators in qsets are in the FBAS, etc.)
-        pass
+        if not all(isinstance(v, QSet) for v in self.all_qsets()):
+            raise Exception(f"FBAS failed validation: an inner QSet is not a QSet")
+        for qs in self.all_qsets():
+            for v in qs.validators:
+                if v not in self.qset_map.keys():
+                    raise Exception(f"Validator {v} appears in QSet {qs} but not in the FBAS's key range")
+
+    @staticmethod
+    def from_stellarbeat_json(data : list):
+        return FBAS({v['publicKey'] : QSet.from_stellarbeat_json(v['quorumSet']) for v in data})
 
     def is_quorum(self, validators):
         """
@@ -81,4 +97,3 @@ class FBAS:
     def all_qsets(self):
         """Returns the set containing all QSets appearing in this FBAS."""
         return frozenset().union(*(qs.all_qsets() for qs in self.qset_map.values()))
-    

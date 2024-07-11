@@ -1,5 +1,7 @@
-from fbas import *
 import unittest
+import os
+from fbas import *
+from stellarbeat import get_validators_from_file
 
 q1 = QSet.make(3, [1,2,3,4],[])
 o1 = QSet.make(2, [11,12,13],[])
@@ -48,3 +50,11 @@ class FBASTest(unittest.TestCase):
     def test_3(self):
         self.assertTrue(fbas1.closure([1,2]) == {1,2,3,4})
         self.assertTrue(fbas1.closure([2]) == {2})
+
+    def test_stellarbeat(self):
+        def test_file(name):
+            return os.path.join(
+                os.path.dirname(os.path.realpath(__file__)), 'test_data', name)
+        FBAS.from_stellarbeat_json(get_validators_from_file(test_file('validators.json')))
+        with self.assertRaises(Exception):
+            FBAS.from_stellarbeat_json(get_validators_from_file(test_file('validators_broken_1.json')))
