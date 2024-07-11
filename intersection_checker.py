@@ -3,7 +3,7 @@ from pysat.solvers import Solver
 from pysat.card import *
 from pysat.formula import *
 
-def check_intersection(fbas):
+def check_intersection(fbas, solver='cms'):
 
     """
     Checks whether all quorums intersect.
@@ -35,7 +35,7 @@ def check_intersection(fbas):
     big_conj = And(*constraints)  # needed?
     clauses = [c for c in big_conj]
     # solve:
-    s = Solver(bootstrap_with=clauses)
+    s = Solver(bootstrap_with=clauses, name=solver)
     res = s.solve()
     # debug:
     if res:
