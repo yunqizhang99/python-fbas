@@ -3,7 +3,7 @@ from pysat.solvers import Solver
 from pysat.card import *
 from pysat.formula import *
 
-def check_intersection(fbas, solver='cms'):
+def intersection_constraints(fbas, solver='cms'):
 
     """
     Checks whether all quorums intersect.
@@ -30,16 +30,18 @@ def check_intersection(fbas, solver='cms'):
     # no validator can be in both quorums:
     for v in fbas.qset_map.keys():
         constraints += [Neg(And(Atom(('A', v)), Atom(('B', v))))]
+    return constraints
 
-    # convert all the constraints to clauses:
-    big_conj = And(*constraints)  # needed?
-    clauses = [c for c in big_conj]
-    # solve:
+def check_intersection(fbas, solver='cms'):
+    clauses = [c for cstr in intersection_constraints(fbas, solver) for c in cstr]
     s = Solver(bootstrap_with=clauses, name=solver)
     res = s.solve()
-    # debug:
     if res:
         model = s.get_model()
-        print(model)
-        print(Formula.formulas(model, atoms_only=True))
+        def get_quorum(q):
+            return [a.object[1] for a in Formula.formulas(model, atoms_only=True)
+                    if isinstance(a, Atom) and a.object[0] == q]
+        print("Disjoint quorums:")
+        print("Quorum A:", get_quorum('A'))
+        print("Quorum B:", get_quorum('B'))
     return not res

@@ -1,4 +1,4 @@
-from intersection_checker import check_intersection
+from intersection_checker import *
 from fbas import QSet, FBAS
 from stellarbeat import get_validators_from_file
 from test_utils import get_test_data_file_path
