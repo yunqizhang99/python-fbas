@@ -8,6 +8,10 @@ class QSet:
     validators: frozenset
     innerQSets: frozenset
 
+    def __post_init__(self):
+        # TODO check well-formedness
+        pass
+
     def __bool__(self):
         return bool(self.validators | self.innerQSets)
 
@@ -46,6 +50,10 @@ class QSet:
 class FBAS:
     qset_map: dict
 
+    def __post_init__(self):
+        # TODO: check well-formedness (thresholds range, all validators in qsets are in the FBAS, etc.)
+        pass
+
     def is_quorum(self, validators):
         """
         A set of validators is a quorum if it satisfies the agreement requirements of all its members.
@@ -55,8 +63,7 @@ class FBAS:
 
     def to_graph(self):
         # first collect all the qsets appearing anywhere
-        qsets = frozenset().union(*(qs.all_QSets() for qs in self.qset_map.values())) \
-            | frozenset(self.qset_map.values())
+        qsets = frozenset().union(*(qs.all_QSets() for qs in self.qset_map.values()))
         # create a graph with a node for each validator and each qset
         G = nx.DiGraph()
         G.add_edges_from(list(self.qset_map.items()))
@@ -70,3 +77,7 @@ class FBAS:
         def _blocked(xs):
             return {v for v in self.qset_map.keys() if self.qset_map[v].blocked(xs)} | xs
         return fixpoint(_blocked, set(S))
+
+    def all_QSets(self):
+        """Returns the set containing all QSets appearing in this FBAS."""
+        return frozenset().union(*(qs.all_QSets() for qs in self.qset_map.values()))
