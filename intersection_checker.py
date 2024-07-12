@@ -23,8 +23,8 @@ def intersection_constraints(fbas, solver='cms'):
         def qset_satisfied(qs):
             slices = list(combinations(qs.validators | qs.inner_qsets, qs.threshold))
             return Or(*[And(*[Atom((q, x)) for x in s]) for s in slices])
-        constraints += [Implies(Atom((q, v)), qset_satisfied(fbas.qset_map[v]))
-                        for v in fbas.qset_map.keys()]
+        constraints += [Implies(Atom((q, v)), Atom((q,fbas.qset_map[v])))
+                        for v in fbas.qset_map.keys()] 
         constraints += [Implies(Atom((q, qs)), qset_satisfied(qs))
                         for qs in fbas.all_qsets()]
     # no validator can be in both quorums:
@@ -32,10 +32,24 @@ def intersection_constraints(fbas, solver='cms'):
         constraints += [Neg(And(Atom(('A', v)), Atom(('B', v))))]
     return constraints
 
+def min_splitting_set_constraints(fbas, solver='cms'):
+    """
+    Idea: for each validator add one variable indicating malicious failure, and add this variable positively to the lhs of the quorum constraint for the validator.
+    Then minimize the number of malicious failures.
+    """
+    pass
+
+def collapse_orgs(fbas):
+    """
+    Collapse organizations into a single node when it preserves quorum intersection.
+    """
+    pass
+
 def check_intersection(fbas, solver='cms'):
     """Returns True if and only if all quorums intersect"""
     # TODO: first try the fbas heuristic
-    clauses = [c for cstr in intersection_constraints(fbas, solver) for c in cstr]
+    collapsed_fbas = fbas.collapse_orgs()
+    clauses = [c for cstr in intersection_constraints(collapsed_fbas, solver) for c in cstr]
     s = Solver(bootstrap_with=clauses, name=solver)
     res = s.solve()
     if res:
