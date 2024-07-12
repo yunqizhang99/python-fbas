@@ -71,8 +71,8 @@ def test_min_direct_intersection():
     qset_2 = QSet.make(4, [], [org_b, org_c, org_d, org_e, org_f])
     qset_3 = QSet.make(4, [], [org_c, org_d, org_e, org_f, org_g])
     qset_4 = QSet.make(4, ['x'], [org_c, org_d, org_e, org_f])
-    assert min_direct_intersection(qset_1, qset_2) == 2
-    assert min_direct_intersection(qset_1, qset_3) == 1
-    assert min_direct_intersection(qset_1, qset_4) == 1
+    assert qset_intersection_bound(qset_1, qset_2) == 2
+    assert qset_intersection_bound(qset_1, qset_3) == 1
+    assert qset_intersection_bound(qset_1, qset_4) == 1
     fbas = FBAS.from_stellarbeat_json(get_validators_from_file(get_test_data_file_path('validators.json')))
-    assert fbas.min_scc_direct_intersection() == 3
+    assert fbas.min_scc_intersection_bound() == 3

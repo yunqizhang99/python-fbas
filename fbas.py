@@ -27,6 +27,11 @@ class QSet:
     @staticmethod
     def make(threshold, validators, inner_qsets):
         return QSet(threshold, frozenset(validators), frozenset(inner_qsets))
+    
+    @staticmethod
+    def from_stellarbeat_json(data : dict):
+        return QSet.make(data['threshold'], data['validators'],
+                         [QSet.from_stellarbeat_json(qs) for qs in data['innerQuorumSets']])
 
     def sat(self, validators):
         """Whether the agreement requirements encoded by this QSet are satisfied by the given set of validators."""
@@ -47,7 +52,7 @@ class QSet:
         def directly_blocked(qs, xs):
             return len(qs.elements() & xs) > len(qs.elements()) - qs.threshold
         def _blocked(xs):
-            return xs | {qs for qs in self.all_qsets() if directly_blocked(qs, xs)}
+            return xs | {qs for qs in self.all_qsets() - xs if directly_blocked(qs, xs)}
         return self in fixpoint(_blocked, frozenset(validators))
 
     def all_validators(self):
@@ -57,21 +62,17 @@ class QSet:
     def depth(self):
         return 1 + max((0 if not self.inner_qsets else max(iqs.depth() for iqs in self.inner_qsets)), 0)
     
-    @staticmethod
-    def from_stellarbeat_json(data : dict):
-        return QSet.make(data['threshold'], data['validators'],
-                         [QSet.from_stellarbeat_json(qs) for qs in data['innerQuorumSets']])
-    
-def min_direct_intersection(qset1, qset2):
+def qset_intersection_bound(qset1, qset2):
     """
     Returns a lower bound on the number of validators in common in any two slices of qset1 and qset2.
     Assumes that the qsets have at most 2 levels.
-    If qset1.validators and qset2.validators are empty and their inner qsets represent organizations,
-    this is also a lower bound on the number of organizations one must compromise to obtain non-intersecting slices.
+    Additionally, if qset1.validators and qset2.validators are empty and their inner qsets represent organizations,
+    this is also a lower bound on the number of organizations one must compromise to obtain two slices that have only compromised
+    organizations in common.
     """
     if qset1.depth() > 2 or qset2.depth() > 2:
         raise Exception("direct_safety_margin only works for qsets with at most 2 levels")
-    #  in order to guarantee intersection, we require common inner-qsets to have a threshold of more than half
+    #  in order to guarantee intersection, we require common inner-qsets to have a threshold of more than half:
     if any([2*qs.threshold < len(qs.elements()) for qs in qset1.inner_qsets | qset2.inner_qsets]):
         return 0
     n1, n2 = len(qset1.elements()), len(qset2.elements())
@@ -80,7 +81,7 @@ def min_direct_intersection(qset1, qset2):
     nc = len(common)
     m1 = (t1 + nc) - n1  # worst-case number of common elements in a slice of qset1
     m2 = (t2 + nc) - n2  # worst-case number of common elements in a slice of qset2
-    return max((m1 + m2) - nc, 0)
+    return max((m1 + m2) - nc, 0) # We could make it more precise by tracking the size of org intersections (e.g. the minimal intersection is 2 for a 3/4 org)
 
 @dataclass
 class FBAS:
@@ -146,10 +147,10 @@ class FBAS:
     def max_scc(self):
         return max(nx.strongly_connected_components(self.to_graph()), key=len)
     
-    def min_scc_direct_intersection(self):
+    def min_scc_intersection_bound(self):
         max_scc_qsets = {self.qset_map[v] for v in self.max_scc()}
-        return min(min_direct_intersection(q1, q2) for q1 in max_scc_qsets for q2 in max_scc_qsets)
-    
+        return min(qset_intersection_bound(q1, q2) for q1 in max_scc_qsets for q2 in max_scc_qsets)
+
     def intersection_check_heuristic(self):
         """
         Compute a maximal intertwined set (i.e. max clique) in the max scc, then check its closure is the whole fbas.
@@ -157,4 +158,38 @@ class FBAS:
         Do that a number of times.
         Also fail immediately if the undirected version of the graph is not connected.
         """
-        # TODO
+        pass
+
+    def collapse_orgs(self):
+        def is_collapsible(qset):
+            return (
+                # no inner QSets:
+                not qset.inner_qsets
+                # the validators of this QSet do not appear anywhere else:
+                and all([not (qset.validators & qs.all_validators()) for qs in self.all_qsets() if qs != qset])
+                # the validators of this QSet all have the same QSet:
+                and len({self.qset_map[v] for v in qset.validators}) == 1
+                # threshold is greater than half:
+                and 2*qset.threshold > len(qset.validators)
+            )
+        # for each collapsible QSet, create a new validator:
+        collapsible = list({qs for qs in self.all_qsets() if is_collapsible(qs)})
+        new_validators = {qs : collapsible.index(qs) for qs in collapsible}
+        if new_validators.values() & self.qset_map.keys():
+            raise Exception("New validators clash with existing validators (should not happen is validators are identified by strings)")
+        # now replace all the collapsible qsets:
+        def replace_collapsible(qs):
+            if qs in collapsible:
+                return QSet.make(1, [new_validators[qs]], [])
+            else:
+                return QSet.make(
+                    qs.threshold,
+                    qs.validators| {replace_collapsible(cqs)
+                                    for cqs in qs.inner_qsets & set(collapsible)},
+                    [ncqs for ncqs in qs.inner_qsets if ncqs not in collapsible])
+        def qset_of_collapsible(qset):
+            qset_of_members = self.qset_map[next(iter(qset.validators))]
+            return qset_of_members if qset_of_members not in collapsible else QSet.make(1,[new_validators[qset_of_members]],[])
+        new_qset_map = ({v : replace_collapsible(qs) for v, qs in self.qset_map.items()} |
+                        {new_validators[qs] : qset_of_collapsible(qs) for qs in collapsible})
+        return FBAS(new_qset_map)
