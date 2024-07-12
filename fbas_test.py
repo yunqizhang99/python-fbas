@@ -40,15 +40,39 @@ def test_5():
     assert not fbas1.is_quorum([2,4])
 
 def test_6():
-    assert set(fbas1.to_graph().nodes) == {1,2,3,4,q1}
-    assert set(fbas1.to_graph().edges) == {(1,q1),(2,q1),(3,q1),(4,q1),(q1,1),(q1,2),(q1,3),(q1,4)}
+    assert set(fbas1.to_mixed_graph().nodes) == {1,2,3,4,q1}
+    assert set(fbas1.to_mixed_graph().edges) == {(1,q1),(2,q1),(3,q1),(4,q1),(q1,1),(q1,2),(q1,3),(q1,4)}
+    assert set(fbas1.to_graph().edges) == {(1,1),(1,2),(1,3),(1,4),(2,1),(2,2),(2,3),(2,4),(3,1),(3,2),(3,3),(3,4),(4,1),(4,2),(4,3),(4,4)}
 
 def test_7():
     assert fbas1.closure([1,2]) == {1,2,3,4}
     assert fbas1.closure([2]) == {2}
 
+def test_depth():
+    assert q1.depth() == 1
+    assert q2.depth() == 2
+
 def test_stellarbeat():
     fbas = FBAS.from_stellarbeat_json(get_validators_from_file(get_test_data_file_path('validators.json')))
+    fbas.to_mixed_graph()
     fbas.to_graph()
     with pytest.raises(Exception):
         FBAS.from_stellarbeat_json(get_validators_from_file(get_test_data_file_path('validators_broken_1.json')))
+
+def test_min_direct_intersection():
+    org_a = QSet.make(2, ['a1','a2','a3'],[])
+    org_b = QSet.make(2, ['b1','b2','b3'],[])
+    org_c = QSet.make(2, ['c1','c2','c3'],[])
+    org_d = QSet.make(2, ['d1','d2','d3'],[])
+    org_e = QSet.make(2, ['e1','e2','e3'],[])
+    org_f = QSet.make(2, ['f1','f2','f3'],[])
+    org_g = QSet.make(2, ['g1','g2','g3'],[])
+    qset_1 = QSet.make(4, [], [org_a, org_b, org_c, org_d, org_e])
+    qset_2 = QSet.make(4, [], [org_b, org_c, org_d, org_e, org_f])
+    qset_3 = QSet.make(4, [], [org_c, org_d, org_e, org_f, org_g])
+    qset_4 = QSet.make(4, ['x'], [org_c, org_d, org_e, org_f])
+    assert min_direct_intersection(qset_1, qset_2) == 2
+    assert min_direct_intersection(qset_1, qset_3) == 1
+    assert min_direct_intersection(qset_1, qset_4) == 1
+    fbas = FBAS.from_stellarbeat_json(get_validators_from_file(get_test_data_file_path('validators.json')))
+    assert fbas.min_scc_direct_intersection() == 3

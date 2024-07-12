@@ -6,7 +6,7 @@ from pysat.formula import *
 def intersection_constraints(fbas, solver='cms'):
 
     """
-    Checks whether all quorums intersect.
+    Computes a formula that is satisfiable if and only if there exist two disjoint quorums in the FBAS.
     The idea is to create two propositional variables ('A',v) and ('B',v) for each validator v.
     ('A',v) indicates whether v is in a quorum 'A', and ('B',v) indicates whether v is in a quorum 'B'.
     Then we create constraints asserting that 'A' is a non-empty quorum and 'B' is a non-empty quorum.
@@ -33,6 +33,8 @@ def intersection_constraints(fbas, solver='cms'):
     return constraints
 
 def check_intersection(fbas, solver='cms'):
+    """Returns True if and only if all quorums intersect"""
+    # TODO: first try the fbas heuristic
     clauses = [c for cstr in intersection_constraints(fbas, solver) for c in cstr]
     s = Solver(bootstrap_with=clauses, name=solver)
     res = s.solve()

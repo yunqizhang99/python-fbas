@@ -4,6 +4,9 @@ import networkx as nx
 
 @dataclass(frozen=True)
 class QSet:
+
+    """Stellar's so-called quorum sets (which are not sets of quorums)"""
+
     threshold: int
     validators: frozenset
     inner_qsets: frozenset
@@ -33,26 +36,51 @@ class QSet:
     def all_qsets(self):
         """Returns the set containing self and all inner QSets appearing (recursively) in this QSet."""
         return frozenset((self,)) | self.inner_qsets | frozenset().union(*(iqs.all_qsets() for iqs in self.inner_qsets))
+    
+    def elements(self):
+        return self.validators | self.inner_qsets
 
     def blocked(self, validators):
         """
         Whether this QSet is blocked by the given set of validators (meaning all slices include a member of the set validators).
         """
-        def directly_blocked(q, xs):
-            members = (q.validators | q.inner_qsets)
-            return len(members & xs) > len(members) - q.threshold
+        def directly_blocked(qs, xs):
+            return len(qs.elements() & xs) > len(qs.elements()) - qs.threshold
         def _blocked(xs):
-            return xs | {q for q in self.all_qsets() if directly_blocked(q, xs)}
+            return xs | {qs for qs in self.all_qsets() if directly_blocked(qs, xs)}
         return self in fixpoint(_blocked, frozenset(validators))
 
     def all_validators(self):
         """Returns the set of all validators appearing (recursively) in this QSet."""
         return self.validators | set().union(*(iqs.all_validators() for iqs in self.inner_qsets))
     
+    def depth(self):
+        return 1 + max((0 if not self.inner_qsets else max(iqs.depth() for iqs in self.inner_qsets)), 0)
+    
     @staticmethod
     def from_stellarbeat_json(data : dict):
         return QSet.make(data['threshold'], data['validators'],
                          [QSet.from_stellarbeat_json(qs) for qs in data['innerQuorumSets']])
+    
+def min_direct_intersection(qset1, qset2):
+    """
+    Returns a lower bound on the number of validators in common in any two slices of qset1 and qset2.
+    Assumes that the qsets have at most 2 levels.
+    If qset1.validators and qset2.validators are empty and their inner qsets represent organizations,
+    this is also a lower bound on the number of organizations one must compromise to obtain non-intersecting slices.
+    """
+    if qset1.depth() > 2 or qset2.depth() > 2:
+        raise Exception("direct_safety_margin only works for qsets with at most 2 levels")
+    #  in order to guarantee intersection, we require common inner-qsets to have a threshold of more than half
+    if any([2*qs.threshold < len(qs.elements()) for qs in qset1.inner_qsets | qset2.inner_qsets]):
+        return 0
+    n1, n2 = len(qset1.elements()), len(qset2.elements())
+    t1, t2 = qset1.threshold, qset2.threshold
+    common = qset1.elements() & qset2.elements()
+    nc = len(common)
+    m1 = (t1 + nc) - n1  # worst-case number of common elements in a slice of qset1
+    m2 = (t2 + nc) - n2  # worst-case number of common elements in a slice of qset2
+    return max((m1 + m2) - nc, 0)
 
 @dataclass
 class FBAS:
@@ -78,11 +106,27 @@ class FBAS:
         return all(qs.sat(validators) for qs in (self.qset_map[v] for v in validators))
 
     def to_graph(self):
+        """
+        Returns a directed graph where the nodes are validators and there is an edge from v to w if v appears anywhere is in w's QSet.
+        """
+        g = nx.DiGraph()
+        for v, qs in self.qset_map.items():
+            for w in qs.all_validators():
+                g.add_edge(v, w)
+        return g
+
+    def to_mixed_graph(self):
+        """
+        Returns a directed graph where the nodes are validators and QSets.
+        There is an edge from each validator to its QSet, and an edge from each QSet to each of its direct members.
+        """
         # first collect all the qsets appearing anywhere
         qsets = frozenset().union(*(qs.all_qsets() for qs in self.qset_map.values()))
         # create a graph with a node for each validator and each qset
         g = nx.DiGraph()
+        # add an edge from each validator to its QSet:
         g.add_edges_from(list(self.qset_map.items()))
+        # add an edge from each QSet to each of its members:
         for qs in qsets:
             for x in qs.validators | qs.inner_qsets:
                 g.add_edge(qs, x)
@@ -97,3 +141,19 @@ class FBAS:
     def all_qsets(self):
         """Returns the set containing all QSets appearing in this FBAS."""
         return frozenset().union(*(qs.all_qsets() for qs in self.qset_map.values()))
+    
+    def max_scc(self):
+        return max(nx.strongly_connected_components(self.to_graph()), key=len)
+    
+    def min_scc_direct_intersection(self):
+        max_scc_qsets = {self.qset_map[v] for v in self.max_scc()}
+        return min(min_direct_intersection(q1, q2) for q1 in max_scc_qsets for q2 in max_scc_qsets)
+    
+    def intersection_check_heuristic(self):
+        """
+        Compute a maximal intertwined set (i.e. max clique) in the max scc, then check its closure is the whole fbas.
+        If not, repeat with another maximal clique.
+        Do that a number of times.
+        Also fail immediately if the undirected version of the graph is not connected.
+        """
+        # TODO
