@@ -2,8 +2,13 @@ from itertools import combinations
 from pysat.solvers import Solver
 from pysat.card import *
 from pysat.formula import *
+from pysat.examples.fm import FM
+from pysat.examples.lsu import LSU
+from pysat.examples.rc2 import RC2
 
-def intersection_constraints(fbas, solver='cms'):
+from fbas import QSet
+
+def intersection_constraints(fbas):
 
     """
     Computes a formula that is satisfiable if and only if there exist two disjoint quorums in the FBAS.
@@ -23,41 +28,82 @@ def intersection_constraints(fbas, solver='cms'):
         def qset_satisfied(qs):
             slices = list(combinations(qs.validators | qs.inner_qsets, qs.threshold))
             return Or(*[And(*[Atom((q, x)) for x in s]) for s in slices])
-        constraints += [Implies(Atom((q, v)), Atom((q,fbas.qset_map[v])))
-                        for v in fbas.qset_map.keys()] 
+        constraints += [Implies(Atom((q, v)), Atom((q, fbas.qset_map[v])))
+                        for v in fbas.qset_map.keys()]
         constraints += [Implies(Atom((q, qs)), qset_satisfied(qs))
                         for qs in fbas.all_qsets()]
     # no validator can be in both quorums:
     for v in fbas.qset_map.keys():
         constraints += [Neg(And(Atom(('A', v)), Atom(('B', v))))]
-    return constraints
+    # convert to CNF and return:
+    return [c for cstr in constraints for c in cstr]
 
-def min_splitting_set_constraints(fbas, solver='cms'):
-    """
-    Idea: for each validator add one variable indicating malicious failure, and add this variable positively to the lhs of the quorum constraint for the validator.
-    Then minimize the number of malicious failures.
-    """
-    pass
-
-def collapse_orgs(fbas):
-    """
-    Collapse organizations into a single node when it preserves quorum intersection.
-    """
-    pass
-
+def get_quorum_from_formulas(fmlas, q):
+    return [a.object[1] for a in fmlas
+            if isinstance(a, Atom) and a.object[0] == q and not isinstance(a.object[1], QSet)]
+    
 def check_intersection(fbas, solver='cms'):
     """Returns True if and only if all quorums intersect"""
     # TODO: first try the fbas heuristic
     collapsed_fbas = fbas.collapse_orgs()
-    clauses = [c for cstr in intersection_constraints(collapsed_fbas, solver) for c in cstr]
+    clauses = intersection_constraints(collapsed_fbas)
     s = Solver(bootstrap_with=clauses, name=solver)
     res = s.solve()
     if res:
         model = s.get_model()
-        def get_quorum(q):
-            return [a.object[1] for a in Formula.formulas(model, atoms_only=True)
-                    if isinstance(a, Atom) and a.object[0] == q]
+        fmlas = [f for f in Formula.formulas(model, atoms_only=True)]
         print("Disjoint quorums:")
-        print("Quorum A:", get_quorum('A'))
-        print("Quorum B:", get_quorum('B'))
+        print("Quorum A:", get_quorum_from_formulas(fmlas, 'A'))
+        print("Quorum B:", get_quorum_from_formulas(fmlas, 'B'))
     return not res
+
+def min_splitting_set_constraints(fbas):
+    """
+    Idea: for each validator add one variable indicating malicious failure, and add this variable positively to the lhs of the quorum constraint for the validator.
+    Then minimize the number of malicious failures.
+    """
+    constraints = []
+    def not_failed(v):
+        return Neg(Atom(('failed',v)))
+    for q in ['A', 'B']:
+        # q has at least one non-faulty member:
+        constraints += [Or(*[And(Atom((q,v)), not_failed(v)) for v in fbas.qset_map.keys()])]
+        # each member must have a slice in the quorum, unless it's faulty:
+        def qset_satisfied(qs):
+            slices = list(combinations(qs.validators | qs.inner_qsets, qs.threshold))
+            return Or(*[And(*[Atom((q, x)) for x in s]) for s in slices])
+        constraints += [Implies(And(Atom((q, v)), not_failed(v)), Atom((q, fbas.qset_map[v])))
+                        for v in fbas.qset_map.keys()] 
+        constraints += [Implies(Atom((q, qs)), qset_satisfied(qs))
+                        for qs in fbas.all_qsets()]
+    # no non-failed validator can be in both quorums:
+    for v in fbas.qset_map.keys():
+        constraints += [Neg(And(not_failed(v), Atom(('A', v)), Atom(('B', v))))]
+    # convert to CNF:
+    wcnf = WCNF()
+    wcnf.extend([c for cstr in constraints for c in cstr])
+    # add soft constraints for minimizing the number of failed nodes (i.e. maximizing the number of non-failed nodes):
+    for v in fbas.qset_map.keys():
+        nf = not_failed(v)
+        nf.clausify()
+        wcnf.append([c for c in nf][0], weight=1)
+    return wcnf
+
+def min_splitting_set(fbas, solver='cms'):
+    wncf = min_splitting_set_constraints(fbas)
+    # max_sat_solver = FM(wncf)
+    max_sat_solver = RC2(wncf)
+    if max_sat_solver.compute():
+    # if max_sat_solver.solve():
+        print(f'Found minimal splitting set of size {max_sat_solver.cost}')
+        model = max_sat_solver.model
+        fmlas = [f for f in Formula.formulas(model, atoms_only=True)]
+        # print(Formula.formulas(fm.model, atoms_only=True))
+        print("Disjoint quorums:")
+        print("Quorum A:", get_quorum_from_formulas(fmlas, 'A'))
+        print("Quorum B:", get_quorum_from_formulas(fmlas, 'B'))
+        failed_nodes = [a.object[1] for a in fmlas if isinstance(a, Atom) and a.object[0] == 'failed']
+        print("Failed nodes:", failed_nodes)
+        return failed_nodes
+    else:
+        return frozenset()

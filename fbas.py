@@ -9,7 +9,7 @@ class QSet:
 
     threshold: int
     validators: frozenset
-    inner_qsets: frozenset
+    inner_qsets: frozenset  # a set of QSets
 
     def __post_init__(self):
         valid = (self.threshold > 0

@@ -1,4 +1,3 @@
-import os
 from timeit import *
 from intersection_checker import check_intersection
 from stellarbeat import get_validators_from_file
