@@ -87,8 +87,9 @@ class FBAS:
     qset_map: dict
 
     def __post_init__(self):
-        if not all(isinstance(v, QSet) for v in self.all_qsets()):
-            raise Exception(f"FBAS failed validation: an inner QSet is not a QSet")
+        if not all(isinstance(v, QSet) for v in self.qset_map.values()):
+            bad_qset = next(v for v in self.qset_map.values() if not isinstance(v, QSet))
+            raise Exception(f"FBAS failed validation: the inner QSet {bad_qset} is not a QSet")
         for qs in self.all_qsets():
             for v in qs.validators:
                 if v not in self.qset_map.keys():
