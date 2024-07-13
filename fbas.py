@@ -16,7 +16,7 @@ class QSet:
             and self.threshold <= len(self.validators) + len(self.inner_qsets)
             and all(isinstance(qs, QSet) for qs in self.inner_qsets))
         if not valid:
-            raise Exception(f"QSet failed validation: {self}")
+            raise ValueError(f"QSet failed validation: {self}")
 
     def __bool__(self):
         return bool(self.validators | self.inner_qsets)
@@ -30,8 +30,10 @@ class QSet:
     
     @staticmethod
     def from_stellarbeat_json(data : dict):
-        return QSet.make(data['threshold'], data['validators'],
-                         [QSet.from_stellarbeat_json(qs) for qs in data['innerQuorumSets']])
+        match data:
+            case {'threshold': t, 'validators': vs, 'innerQuorumSets': iqss}:
+                return QSet.make(t, vs, [QSet.from_stellarbeat_json(qs) for qs in iqss])
+            case _: raise ValueError(f"Invalid QSet JSON: {data}")
 
     def sat(self, validators):
         """Whether the agreement requirements encoded by this QSet are satisfied by the given set of validators."""
@@ -71,7 +73,7 @@ def qset_intersection_bound(qset1, qset2):
     organizations in common.
     """
     if qset1.depth() > 2 or qset2.depth() > 2:
-        raise Exception("direct_safety_margin only works for qsets with at most 2 levels")
+        raise ValueError("direct_safety_margin only works for qsets with at most 2 levels")
     #  in order to guarantee intersection, we require common inner-qsets to have a threshold of more than half:
     if any([2*qs.threshold < len(qs.elements()) for qs in qset1.inner_qsets | qset2.inner_qsets]):
         return 0
@@ -90,14 +92,17 @@ class FBAS:
     def __post_init__(self):
         if not all(isinstance(v, QSet) for v in self.qset_map.values()):
             bad_qset = next(v for v in self.qset_map.values() if not isinstance(v, QSet))
-            raise Exception(f"FBAS failed validation: the inner QSet {bad_qset} is not a QSet")
+            raise ValueError(f"FBAS failed validation: the inner QSet {bad_qset} is not a QSet")
         for qs in self.all_qsets():
             for v in qs.validators:
                 if v not in self.qset_map.keys():
-                    raise Exception(f"Validator {v} appears in QSet {qs} but not in the FBAS's key range")
+                    raise ValueError(f"Validator {v} appears in QSet {qs} but not in the FBAS's key range")
 
     @staticmethod
     def from_stellarbeat_json(data : list):
+        for v in data:
+            if 'publicKey' not in v or 'quorumSet' not in v:
+                raise ValueError(f"Invalid validator JSON: {v}")
         return FBAS({v['publicKey'] : QSet.from_stellarbeat_json(v['quorumSet']) for v in data})
 
     def is_quorum(self, validators):
@@ -153,14 +158,19 @@ class FBAS:
 
     def intersection_check_heuristic(self):
         """
-        Compute a maximal intertwined set (i.e. max clique) in the max scc, then check its closure is the whole fbas.
+        Compute a maximal directly-intertwined set (i.e. max clique) in the max scc, then check its closure is the whole fbas.
         If not, repeat with another maximal clique.
         Do that a number of times.
         Also fail immediately if the undirected version of the graph is not connected.
         """
         pass
 
-    def collapse_orgs(self):
+    def collapse_qsets(self):
+        """
+        A QSet is collapsible if it can safely be replaced by a single (new) validator without impacting quorum intersection.
+        This method uses a heuristic to identify collapsible QSets and returns a new fbas where all identified QSets have been replaced by a new validator.
+        It might then be easier to check quorum intersection.
+        """
         def is_collapsible(qset):
             return (
                 # no inner QSets:
@@ -176,7 +186,7 @@ class FBAS:
         collapsible = list({qs for qs in self.all_qsets() if is_collapsible(qs)})
         new_validators = {qs : collapsible.index(qs) for qs in collapsible}
         if new_validators.values() & self.qset_map.keys():
-            raise Exception("New validators clash with existing validators (should not happen is validators are identified by strings)")
+            raise Exception("New validators clash with existing validators (should not happen if validators are identified by strings)")
         # now replace all the collapsible qsets:
         def replace_collapsible(qs):
             if qs in collapsible:

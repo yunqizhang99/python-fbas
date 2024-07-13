@@ -8,6 +8,9 @@ from pysat.examples.rc2 import RC2
 
 from fbas import QSet
 
+def to_cnf(fmlas):
+    return [c for f in fmlas for c in f]
+
 def intersection_constraints(fbas):
 
     """
@@ -36,7 +39,7 @@ def intersection_constraints(fbas):
     for v in fbas.qset_map.keys():
         constraints += [Neg(And(Atom(('A', v)), Atom(('B', v))))]
     # convert to CNF and return:
-    return [c for cstr in constraints for c in cstr]
+    return to_cnf(constraints)
 
 def get_quorum_from_formulas(fmlas, q):
     return [a.object[1] for a in fmlas
@@ -45,7 +48,7 @@ def get_quorum_from_formulas(fmlas, q):
 def check_intersection(fbas, solver='cms'):
     """Returns True if and only if all quorums intersect"""
     # TODO: first try the fbas heuristic
-    collapsed_fbas = fbas.collapse_orgs()
+    collapsed_fbas = fbas.collapse_qsets()
     clauses = intersection_constraints(collapsed_fbas)
     s = Solver(bootstrap_with=clauses, name=solver)
     res = s.solve()
@@ -59,8 +62,8 @@ def check_intersection(fbas, solver='cms'):
 
 def min_splitting_set_constraints(fbas):
     """
-    Idea: for each validator add one variable indicating malicious failure, and add this variable positively to the lhs of the quorum constraint for the validator.
-    Then minimize the number of malicious failures.
+    The idea is like for intersection checking, except for each validator we add one variable indicating malicious failure, and we adjust the constraints accordingly.
+    Then we use maxSAT to minimize the number of malicious failures.
     """
     constraints = []
     def not_failed(v):
@@ -81,18 +84,18 @@ def min_splitting_set_constraints(fbas):
         constraints += [Neg(And(not_failed(v), Atom(('A', v)), Atom(('B', v))))]
     # convert to CNF:
     wcnf = WCNF()
-    wcnf.extend([c for cstr in constraints for c in cstr])
+    wcnf.extend(to_cnf(constraints))
     # add soft constraints for minimizing the number of failed nodes (i.e. maximizing the number of non-failed nodes):
     for v in fbas.qset_map.keys():
         nf = not_failed(v)
         nf.clausify()
-        wcnf.append([c for c in nf][0], weight=1)
+        wcnf.append(to_cnf([nf])[0], weight=1)
     return wcnf
 
 def min_splitting_set(fbas, solver='cms'):
     wncf = min_splitting_set_constraints(fbas)
-    # max_sat_solver = FM(wncf)
-    max_sat_solver = RC2(wncf)
+    max_sat_solver = FM(wncf)
+    # max_sat_solver = RC2(wncf)
     if max_sat_solver.compute():
     # if max_sat_solver.solve():
         print(f'Found minimal splitting set of size {max_sat_solver.cost}')
