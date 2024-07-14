@@ -165,7 +165,9 @@ class FBAS:
         """
         pass
 
+    # TODO: would be nice to use org names as new validator name
     def collapse_qsets(self):
+
         """
         A QSet is collapsible if it can safely be replaced by a single (new) validator without impacting quorum intersection.
         This method uses a heuristic to identify collapsible QSets and returns a new fbas where all identified QSets have been replaced by a new validator.
@@ -180,8 +182,7 @@ class FBAS:
                 # the validators of this QSet all have the same QSet:
                 and len({self.qset_map[v] for v in qset.validators}) == 1
                 # threshold is greater than half:
-                and 2*qset.threshold > len(qset.validators)
-            )
+                and 2*qset.threshold > len(qset.validators))
         # for each collapsible QSet, create a new validator:
         collapsible = list({qs for qs in self.all_qsets() if is_collapsible(qs)})
         new_validators = {qs : collapsible.index(qs) for qs in collapsible}

@@ -16,6 +16,7 @@ def test_1():
 def test_2():
     assert check_intersection(fbas)
 
+# TODO: check that the disjoint quorums found are actually quorums
 def test_min_splitting_set():
     assert len(min_splitting_set(fbas)) == 3
     assert len(min_splitting_set(fbas1)) == 2

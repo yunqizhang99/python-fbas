@@ -2,9 +2,7 @@ from itertools import combinations
 from pysat.solvers import Solver
 from pysat.card import *
 from pysat.formula import *
-from pysat.examples.fm import FM
 from pysat.examples.lsu import LSU
-from pysat.examples.rc2 import RC2
 
 from fbas import QSet
 
@@ -47,7 +45,6 @@ def get_quorum_from_formulas(fmlas, q):
     
 def check_intersection(fbas, solver='cms'):
     """Returns True if and only if all quorums intersect"""
-    # TODO: first try the fbas heuristic
     collapsed_fbas = fbas.collapse_qsets()
     clauses = intersection_constraints(collapsed_fbas)
     s = Solver(bootstrap_with=clauses, name=solver)
@@ -62,8 +59,12 @@ def check_intersection(fbas, solver='cms'):
 
 def min_splitting_set_constraints(fbas):
     """
-    The idea is like for intersection checking, except for each validator we add one variable indicating malicious failure, and we adjust the constraints accordingly.
-    Then we use maxSAT to minimize the number of malicious failures.
+    Returns a formula that encdes the problem of finding a set of nodes that, if malicious, can cause two quorums to intersect only at malicious nodes, and that is of minimal cardinality.
+    The formula consists of a set of hard constraints plus a set of soft constraints.
+    A maxSAT solver will try to satisfy all the hard constraints and as many soft constraints as possible.
+
+    The idea of the encoding is like for intersection checking, except that for each validator we add one variable indicating malicious failure, and we adjust the constraints accordingly.
+    For each validator, we add a soft constraint stating that it has not failed.
     """
     constraints = []
     def not_failed(v):
@@ -82,7 +83,7 @@ def min_splitting_set_constraints(fbas):
     # no non-failed validator can be in both quorums:
     for v in fbas.qset_map.keys():
         constraints += [Neg(And(not_failed(v), Atom(('A', v)), Atom(('B', v))))]
-    # convert to CNF:
+    # convert to weighted CNF, which allows us to add soft constraints:
     wcnf = WCNF()
     wcnf.extend(to_cnf(constraints))
     # add soft constraints for minimizing the number of failed nodes (i.e. maximizing the number of non-failed nodes):
@@ -92,16 +93,15 @@ def min_splitting_set_constraints(fbas):
         wcnf.append(to_cnf([nf])[0], weight=1)
     return wcnf
 
-def min_splitting_set(fbas, solver='cms'):
+def min_splitting_set(fbas, solver_class=LSU):  # LSU seems to perform the best
+    """Returns a splitting set of minimum cardinality"""
     wncf = min_splitting_set_constraints(fbas)
-    max_sat_solver = FM(wncf)
-    # max_sat_solver = RC2(wncf)
-    if max_sat_solver.compute():
-    # if max_sat_solver.solve():
-        print(f'Found minimal splitting set of size {max_sat_solver.cost}')
-        model = max_sat_solver.model
+    maxSAT_solver = solver_class(wncf)
+    got_model = maxSAT_solver.compute() if 'compute' in solver_class.__dict__ else maxSAT_solver.solve()
+    if got_model:
+        print(f'Found minimal splitting set of size {maxSAT_solver.cost}')
+        model = maxSAT_solver.model
         fmlas = [f for f in Formula.formulas(model, atoms_only=True)]
-        # print(Formula.formulas(fm.model, atoms_only=True))
         print("Disjoint quorums:")
         print("Quorum A:", get_quorum_from_formulas(fmlas, 'A'))
         print("Quorum B:", get_quorum_from_formulas(fmlas, 'B'))
