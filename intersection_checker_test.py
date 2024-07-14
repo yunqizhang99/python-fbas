@@ -21,3 +21,8 @@ def test_min_splitting_set():
     assert len(min_splitting_set(fbas)) == 3
     assert len(min_splitting_set(fbas1)) == 2
     assert len(min_splitting_set(fbas2)) == 0
+
+def test_min_blocking_set():
+    assert len(min_blocking_set(fbas)) == 6
+    assert len(min_blocking_set(fbas1)) == 2
+    assert len(min_blocking_set(fbas2)) == 3
