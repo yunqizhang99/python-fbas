@@ -5,7 +5,7 @@ import networkx as nx
 @dataclass(frozen=True)
 class QSet:
 
-    """Stellar's so-called quorum sets (which are not sets of quorums)"""
+    """Stellar's so-called quorum sets (which are not sets of quorums, but instead represent sets of quorum slices)"""
 
     threshold: int
     validators: frozenset
@@ -75,7 +75,7 @@ def qset_intersection_bound(qset1, qset2):
     if qset1.depth() > 2 or qset2.depth() > 2:
         raise ValueError("direct_safety_margin only works for qsets with at most 2 levels")
     #  in order to guarantee intersection, we require common inner-qsets to have a threshold of more than half:
-    if any([2*qs.threshold < len(qs.elements()) for qs in qset1.inner_qsets | qset2.inner_qsets]):
+    if any(2*qs.threshold < len(qs.elements()) for qs in qset1.inner_qsets | qset2.inner_qsets):
         return 0
     n1, n2 = len(qset1.elements()), len(qset2.elements())
     t1, t2 = qset1.threshold, qset2.threshold
@@ -150,6 +150,7 @@ class FBAS:
         return frozenset().union(*(qs.all_qsets() for qs in self.qset_map.values()))
     
     def max_scc(self):
+        # TODO: if there's more than one, use pagerank to find the "right" one?
         return max(nx.strongly_connected_components(self.to_graph()), key=len)
     
     def min_scc_intersection_bound(self):
@@ -178,7 +179,7 @@ class FBAS:
                 # no inner QSets:
                 not qset.inner_qsets
                 # the validators of this QSet do not appear anywhere else:
-                and all([not (qset.validators & qs.all_validators()) for qs in self.all_qsets() if qs != qset])
+                and all(not (qset.validators & qs.all_validators()) for qs in self.all_qsets() if qs != qset)
                 # the validators of this QSet all have the same QSet:
                 and len({self.qset_map[v] for v in qset.validators}) == 1
                 # threshold is greater than half:
@@ -197,7 +198,7 @@ class FBAS:
                     qs.threshold,
                     qs.validators| {replace_collapsible(cqs)
                                     for cqs in qs.inner_qsets & set(collapsible)},
-                    [ncqs for ncqs in qs.inner_qsets if ncqs not in collapsible])
+                    (ncqs for ncqs in qs.inner_qsets if ncqs not in collapsible))
         def qset_of_collapsible(qset):
             qset_of_members = self.qset_map[next(iter(qset.validators))]
             return qset_of_members if qset_of_members not in collapsible else QSet.make(1,[new_validators[qset_of_members]],[])

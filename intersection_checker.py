@@ -156,39 +156,20 @@ def min_blocking_set_constraints(fbas : FBAS) -> WCNF:
         return Atom(('failed', v))
     def in_closure(x) -> Formula:
         return Atom(('closure', x))
-    # a validator is in the closure if and only if it has not failed:
-    for v in fbas.qset_map.keys():
-        constraints += [Equals(Neg(failed(v)), in_closure(v))]
-    # a qset is in the closure if and only if every one of its slices has a member in the closure or failed:
-    def qset_constraint(qs : QSet) -> Formula:
-        blocking_threshold = len(qs.elements()) - qs.threshold + 1
-        blocking = list(combinations(qs.validators | qs.inner_qsets, blocking_threshold))
-        return Equals(
-            Or(*[And(*[Or(in_closure(x), failed(x)) if x in qs.validators else in_closure(x)
-                        for x in b]) for b in blocking]),
-            in_closure(qs))
-    constraints += [qset_constraint(qs) for qs in fbas.all_qsets()]
-    # a validator is in the closure if and only if: its qset is or it failed:
-    constraints += [Equals(Or(in_closure(fbas.qset_map[v]), failed(v)), in_closure(v))
-                    for v in fbas.qset_map.keys()]
-    # convert to weighted CNF, which allows us to add soft constraints to be maximized:
-    wcnf = WCNF()
-    wcnf.extend(to_cnf(constraints))
-    # add soft constraints for minimizing the number of failed nodes (i.e. maximizing the number of non-failed nodes):
-    for v in fbas.qset_map.keys():
-        nf = Neg(failed(v))
-        nf.clausify()
-        wcnf.append(to_cnf([nf])[0], weight=1)
-    raise NotImplementedError("This function is not yet implemented")
-    return wcnf
+    raise NotImplementedError()
 
 def min_blocking_set(fbas):
     """Returns a blocking set of minimum cardinality"""
     wcnf = min_blocking_set_mus_constraints(fbas)
-    # this is much faster but not minimum:
+    def get_failed(indices):
+        clauses = [wcnf.soft[i-1] for i in indices]
+        return [f.object[1] for f in Formula.formulas([f for clause in clauses for f in clause])]
+    # this is much faster but a minimal MUS, but not necessarily a minimum-cardinality one:
     # indices = OptUx(wcnf, puresat='mgh', unsorted=True).compute()
     indices = OptUx(wcnf).compute() # list of indices of soft clauses that are satisfied
-    clauses = [wcnf.soft[i-1] for i in indices] # TODO: this -1 is very fishy
-    failed = [f.object[1] for f in Formula.formulas([f for clause in clauses for f in clause])]
+    failed = get_failed(indices)
+    # with OptUx(wcnf, puresat='mgh', unsorted=True) as optux:
+        # for mus in optux.enumerate():
+            # print(f'Found minimal blocking set of size {len(mus)}: {get_failed(mus)}')
     print(f'Found minimal blocking set of size {len(failed)}: {failed}')
     return failed
