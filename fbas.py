@@ -149,6 +149,9 @@ class FBAS:
         """Returns the set containing all QSets appearing in this FBAS."""
         return frozenset().union(*(qs.all_qsets() for qs in self.qset_map.values()))
     
+    def elements(self):
+        return frozenset(self.qset_map.keys() | self.all_qsets())
+    
     def max_scc(self):
         # TODO: if there's more than one, use pagerank to find the "right" one?
         return max(nx.strongly_connected_components(self.to_graph()), key=len)

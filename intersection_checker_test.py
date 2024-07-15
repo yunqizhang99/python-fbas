@@ -22,7 +22,13 @@ def test_min_splitting_set():
     assert len(min_splitting_set(fbas1)) == 2
     assert len(min_splitting_set(fbas2)) == 0
 
-def test_min_blocking_set():
-    assert len(min_blocking_set(fbas)) == 6
+def test_min_blocking_set_():
+    # too slow:
+    # assert len(min_blocking_set(fbas)) == 6
     assert len(min_blocking_set(fbas1)) == 2
     assert len(min_blocking_set(fbas2)) == 3
+
+def test_min_blocking_set_mus():
+    assert len(min_blocking_set_mus(fbas)) == 6
+    assert len(min_blocking_set_mus(fbas1)) == 2
+    assert len(min_blocking_set_mus(fbas2)) == 3

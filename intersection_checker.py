@@ -148,17 +148,60 @@ def min_blocking_set_constraints(fbas : FBAS) -> WCNF:
     For each validator, we create a variable indicating it's in the closure of failed validators and another variable indicating whether it's failed.
     We assert that all non-failed validators are in the closure of failed validators.
     We minimize the number of failed validators.
-    TODO: We need a well-foundedness condition. This sounds difficult to encode. We could try to superpose a directed graph (with variables for edges), assert that it's acyclic, and make sure a node can only be blocked by predecessors.
-    Another idea is to use minimal unsat set. That seems easier: assert that there is a quorum of non-failed validators, and for each validator add a soft clause asserting that it failed. The ask for a MUS. But that's minimal, not minimum.
+    We also need a well-foundedness condition. For this we superpose a directed graph (with variables for edges), assert that it's acyclic, and make sure a node can only be blocked by predecessors.
+    It works on small examples but is otherwise extremely slow.
     """
     constraints : list[Formula] = []
     def failed(v) -> Formula:
         return Atom(('failed', v))
     def in_closure(x) -> Formula:
         return Atom(('closure', x))
-    raise NotImplementedError()
+    def edge(x, y) -> Formula:
+        return Atom(('graph', x, y))
+    # the edge relation is transitive:
+    # TODO: just this seems too big to construct
+    constraints += [Implies(And(edge(x,y), edge(y,z)), edge(x,z))
+                    for x in fbas.elements() for y in fbas.elements() for z in fbas.elements()]
+    # acyclicity:
+    constraints += [Neg(edge(x,x)) for x in fbas.elements()]
+    # no edge to failed validators:
+    constraints += [Neg(And(edge(x,y), failed(y))) for x in fbas.qset_map.keys() for y in fbas.qset_map.keys()]
+    # a non-failed validator is in the closure if and only if its qset is in it and is a predecessor in the graph:
+    constraints += [Equals(
+        And(in_closure(v), Neg(failed(v))),
+        And(edge(fbas.qset_map[v],v), in_closure(fbas.qset_map[v]))) for v in fbas.qset_map.keys()]
+    # a qset is in the closure if and only if it's blocked by members of the closure that are predecessors in the graph:
+    def qset_in_closure(qs: QSet):
+        blocking_threshold = len(qs.elements()) - qs.threshold + 1
+        return Or(*[And(*[And(in_closure(x), edge(x,qs)) for x in s]) for s in combinations(qs.elements(), blocking_threshold)])
+    constraints += [Equals(qset_in_closure(qs), in_closure(qs)) for qs in fbas.all_qsets()]
+    # the closure contains all validators and qsets::
+    constraints += [in_closure(x) for x in fbas.qset_map.keys() | fbas.all_qsets()]
+    # finally, we want to maximize the number of non-failed validators:
+    wcnf = WCNF()
+    wcnf.extend(to_cnf(constraints))
+    for v in fbas.qset_map.keys():
+        f = Neg(failed(v))
+        f.clausify()
+        wcnf.append(to_cnf([f])[0], weight=1)
+    return wcnf
 
-def min_blocking_set(fbas):
+def min_blocking_set(fbas, solver_class=LSU):  # LSU seems to perform the best
+    """Returns a splitting set of minimum cardinality"""
+    wncf = min_blocking_set_constraints(fbas)
+    maxSAT_solver = solver_class(wncf)
+    got_model = maxSAT_solver.compute() if 'compute' in solver_class.__dict__ else maxSAT_solver.solve()
+    if got_model:
+        print(f'Found minimal blocking set of size {maxSAT_solver.cost}')
+        model = maxSAT_solver.model
+        fmlas = [f for f in Formula.formulas(model, atoms_only=True)]
+        failed_nodes = [a.object[1] for a in fmlas if isinstance(a, Atom) and a.object[0] == 'failed']
+        print("Failed nodes:", failed_nodes)
+        return failed_nodes
+    else:
+        return frozenset()
+    
+def min_blocking_set_mus(fbas):
     """Returns a blocking set of minimum cardinality"""
     wcnf = min_blocking_set_mus_constraints(fbas)
     def get_failed(indices):
