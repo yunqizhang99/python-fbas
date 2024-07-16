@@ -1,4 +1,4 @@
-from intersection_checker import *
+from sat_based_fbas_analysis import *
 from fbas import QSet, FBAS
 from stellarbeat import get_validators_from_file
 from test_utils import get_test_data_file_path
@@ -32,3 +32,7 @@ def test_min_blocking_set_mus():
     assert len(min_blocking_set_mus(fbas)) == 6
     assert len(min_blocking_set_mus(fbas1)) == 2
     assert len(min_blocking_set_mus(fbas2)) == 3
+
+def test_optimal_overlay():
+    assert len(optimal_overlay(fbas1)) == 5
+    assert len(optimal_overlay(fbas2)) == 6

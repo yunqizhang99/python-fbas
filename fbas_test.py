@@ -8,6 +8,7 @@ o1 = QSet.make(2, [11,12,13],[])
 o2 = QSet.make(2, [21,22,23],[])
 o3 = QSet.make(2, [31,32,33],[])
 q2 = QSet.make(2,['a'],[o1,o2,o3])
+fbas1 = FBAS({1 : q1, 2 : q1, 3 : q1, 4 : q1})
 
 def test_1():
     assert q1.sat([1,2,3])
@@ -32,8 +33,6 @@ def test_4():
     assert not q1.blocked([1])
     assert q2.blocked(['a',11,12,32,33])
     assert not q2.blocked(['a',11,32,33])
-
-fbas1 = FBAS({1 : q1, 2 : q1, 3 : q1, 4 : q1})
 
 def test_5():
     assert fbas1.is_quorum([1,2,4])
@@ -76,3 +75,16 @@ def test_min_direct_intersection():
     assert qset_intersection_bound(qset_1, qset_4) == 1
     fbas = FBAS.from_stellarbeat_json(get_validators_from_file(get_test_data_file_path('validators.json')))
     assert fbas.min_scc_intersection_bound() == 3
+
+def test_depth():
+    assert q1.depth() == 1
+    assert q2.depth() == 2
+
+def test_is_org_structured():
+    assert fbas1.is_org_structured()
+    q = QSet.make(2,[],[o1,o2,o3])
+    fbas2 = FBAS({11 : q, 12 : q, 13 : q, 21 : q, 22 : q, 23 : q, 31 : q, 32 : q, 33 : q})
+    assert fbas2.is_org_structured()
+    q3 = QSet.make(2,[11],[o1,o2,o3])
+    fbas3 = FBAS({11: q3, 12: q3, 13: q3, 21: q3, 22: q3, 23: q3, 31: q3, 32: q3, 33: q3})
+    assert not fbas3.is_org_structured()

@@ -1,6 +1,8 @@
 from utils import fixpoint
 from dataclasses import dataclass
 import networkx as nx
+from itertools import combinations
+from typing import Any
 
 @dataclass(frozen=True)
 class QSet:
@@ -35,6 +37,21 @@ class QSet:
                 return QSet.make(t, vs, [QSet.from_stellarbeat_json(qs) for qs in iqss])
             case _: raise ValueError(f"Invalid QSet JSON: {data}")
 
+    def elements(self):
+        return self.validators | self.inner_qsets
+    
+    def depth(self):
+        return 1 + (0 if not self.inner_qsets else max(iqs.depth() for iqs in self.inner_qsets))
+    
+    def slices(self):
+        return combinations(self.elements(), self.threshold)
+
+    def blocking_threshold(self):
+        return len(self.elements()) - self.threshold + 1
+    
+    def v_blocking_sets(self):
+        return combinations(self.elements(), self.blocking_threshold())
+
     def sat(self, validators):
         """Whether the agreement requirements encoded by this QSet are satisfied by the given set of validators."""
         sat_inner_qsets = {iqs for iqs in self.inner_qsets if iqs.sat(validators)}
@@ -44,9 +61,6 @@ class QSet:
         """Returns the set containing self and all inner QSets appearing (recursively) in this QSet."""
         return frozenset((self,)) | self.inner_qsets | frozenset().union(*(iqs.all_qsets() for iqs in self.inner_qsets))
     
-    def elements(self):
-        return self.validators | self.inner_qsets
-
     def blocked(self, validators):
         """
         Whether this QSet is blocked by the given set of validators (meaning all slices include a member of the set validators).
@@ -87,7 +101,7 @@ def qset_intersection_bound(qset1, qset2):
 
 @dataclass
 class FBAS:
-    qset_map: dict
+    qset_map: dict[Any,QSet]
 
     def __post_init__(self):
         if not all(isinstance(v, QSet) for v in self.qset_map.values()):
@@ -95,7 +109,7 @@ class FBAS:
             raise ValueError(f"FBAS failed validation: the inner QSet {bad_qset} is not a QSet")
         for qs in self.all_qsets():
             for v in qs.validators:
-                if v not in self.qset_map.keys():
+                if v not in self.validators():
                     raise ValueError(f"Validator {v} appears in QSet {qs} but not in the FBAS's key range")
 
     @staticmethod
@@ -104,8 +118,15 @@ class FBAS:
             if 'publicKey' not in v or 'quorumSet' not in v:
                 raise ValueError(f"Invalid validator JSON: {v}")
         return FBAS({v['publicKey'] : QSet.from_stellarbeat_json(v['quorumSet']) for v in data})
+    
+    def is_org_structured(self) -> bool:
+        """
+        An FBAS is org-structured when, for each depth-1 QSet qs appearing in the FBAS, the validators of qs do not appear in any other QSet.
+        """
+        depth_1_qsets = {qs for qs in self.all_qsets() if qs.depth() == 1}
+        return all(all(not (qs1.validators & qs2.validators) for qs2 in self.all_qsets() if qs2 != qs1) for qs1 in depth_1_qsets)   
 
-    def is_quorum(self, validators):
+    def is_quorum(self, validators) -> bool:
         """
         A set of validators is a quorum if it satisfies the agreement requirements of all its members.
         Throws an error if a validator is not in the FBAS.
@@ -144,13 +165,16 @@ class FBAS:
         def _blocked(xs):
             return {v for v, qs in self.qset_map.items() if qs.blocked(xs)} | xs
         return fixpoint(_blocked, set(S))
-
+    
+    def validators(self):
+        return self.qset_map.keys()
+    
     def all_qsets(self):
         """Returns the set containing all QSets appearing in this FBAS."""
         return frozenset().union(*(qs.all_qsets() for qs in self.qset_map.values()))
     
     def elements(self):
-        return frozenset(self.qset_map.keys() | self.all_qsets())
+        return frozenset(self.validators() | self.all_qsets())
     
     def max_scc(self):
         # TODO: if there's more than one, use pagerank to find the "right" one?
@@ -190,7 +214,7 @@ class FBAS:
         # for each collapsible QSet, create a new validator:
         collapsible = list({qs for qs in self.all_qsets() if is_collapsible(qs)})
         new_validators = {qs : collapsible.index(qs) for qs in collapsible}
-        if new_validators.values() & self.qset_map.keys():
+        if new_validators.values() & self.validators():
             raise Exception("New validators clash with existing validators (should not happen if validators are identified by strings)")
         # now replace all the collapsible qsets:
         def replace_collapsible(qs):
