@@ -16,6 +16,45 @@ def _fetch_from_url() -> list:
     else:
         response.raise_for_status()
 
+def create_fake_nodes(n) -> list:
+    """
+    Create n fake nodes and put them in a list
+    """
+    all_fake_nodes = []
+    res = []
+    for i in range(0, n):
+        pk = "MALICIOUS" + str(i)
+        all_fake_nodes.append(pk)
+    for i in range(0, n):
+        pk = "MALICIOUS" + str(i)
+        cur_node_validators = all_fake_nodes.copy()
+        cur_node_validators.remove(pk)
+        qs = {"threshold":n/2, "validators":cur_node_validators, "innerQuorumSets":[]}
+        cur_node = {"publicKey": pk, "quorumSet": qs, "isValidator": True}
+        res.append(cur_node)
+    return res, all_fake_nodes
+
+def _fetch_with_fake_nodes() -> list:
+    """
+    Get data from stellarbeat, filter out non-validator nodes, and return a list of dicts with two keys: 'publicKey' and 'quorumSet'.
+    """
+    url = "https://api.stellarbeat.io/v1/node"
+    response = get(url, timeout=5)
+    num_fake_nodes = 10
+    fake_nodes, fake_pks = create_fake_nodes(num_fake_nodes)
+    if response.status_code == 200:
+        data = response.json()
+        for item in data:
+            if item['host'] != None and "satoshipay" in item['host']:
+                traitor_qs = {"threshold":num_fake_nodes/2 + 1, "validators":fake_pks, "innerQuorumSets":[]}
+                item['quorumSet'] = traitor_qs
+        while len(fake_nodes) > 0:
+            data.append(fake_nodes.pop())
+        return [{'publicKey': node['publicKey'], 'quorumSet': node['quorumSet']}
+            for node in data if node['isValidator']]
+    else:
+        response.raise_for_status()
+
 def get_validators(update=False) -> list:
     cache_dir = user_cache_dir('python-fbas', 'SDF', ensure_exists=True)
     path = os.path.join(cache_dir, 'validators.json')
