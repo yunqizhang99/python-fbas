@@ -160,6 +160,17 @@ class FBAS:
                 g.add_edge(qs, x)
         return g
 
+    def to_weighed_graph(self):
+        def weights(qs: QSet):
+            w = 1/len(qs.elements())
+            return {v : w for v in qs.validators} | \
+                {v : w*weights(qs)[v] for qs in qs.inner_qsets for v in weights(qs).keys()}
+        g = nx.DiGraph()
+        for v, qs in self.qset_map.items():
+            for w, weight in weights(qs).items():
+                g.add_edge(v, w, weight=weight)
+        return g
+
     def closure(self, S):
         """Computes the closure of the set of validators S"""
         def _blocked(xs):
