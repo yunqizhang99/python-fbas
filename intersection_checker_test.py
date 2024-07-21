@@ -1,7 +1,6 @@
 from sat_based_fbas_analysis import *
 from fbas import QSet, FBAS
-from stellarbeat import get_validators_from_file
-from test_utils import get_test_data_file_path
+from test_utils import get_test_data_file_path, get_validators_from_file
 
 q1 = QSet.make(3, [1,2,3,4],[])
 fbas1 = FBAS({1 : q1, 2 : q1, 3 : q1, 4 : q1})

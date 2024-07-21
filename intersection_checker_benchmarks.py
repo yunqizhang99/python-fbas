@@ -1,6 +1,6 @@
 from timeit import *
 from sat_based_fbas_analysis import check_intersection
-from stellarbeat import get_validators_from_file
+from test_utils import get_validators_from_file
 from fbas import FBAS
 from pysat.solvers import SolverNames
 from test_utils import get_test_data_file_path

@@ -1,3 +1,5 @@
+# TODO debug prints
+
 from utils import fixpoint
 from dataclasses import dataclass
 import networkx as nx
@@ -14,9 +16,15 @@ class QSet:
     inner_qsets: frozenset  # a set of QSets
 
     def __post_init__(self):
+        # check that no validator appears twice in the qset:
+        def unique_validators(qs : QSet):
+            return (all(not (iqs1.all_validators() & iqs2.all_validators()) for iqs1 in qs.inner_qsets for iqs2 in qs.inner_qsets if iqs1 != iqs2)
+                and (all(not (qs.validators & iqs.all_validators()) for iqs in self.inner_qsets))
+                and (unique_validators(iqs) for iqs in self.inner_qsets))
         valid = (self.threshold > 0
             and self.threshold <= len(self.validators) + len(self.inner_qsets)
-            and all(isinstance(qs, QSet) for qs in self.inner_qsets))
+            and all(isinstance(qs, QSet) for qs in self.inner_qsets)
+            and unique_validators(self))
         if not valid:
             raise ValueError(f"QSet failed validation: {self}")
 
@@ -30,6 +38,7 @@ class QSet:
     def make(threshold, validators, inner_qsets):
         return QSet(threshold, frozenset(validators), frozenset(inner_qsets))
     
+    # TODO shouldn't this be in stellarbeat.py?
     @staticmethod
     def from_stellarbeat_json(data : dict):
         match data:
@@ -75,9 +84,6 @@ class QSet:
         """Returns the set of all validators appearing (recursively) in this QSet."""
         return self.validators | set().union(*(iqs.all_validators() for iqs in self.inner_qsets))
     
-    def depth(self):
-        return 1 + max((0 if not self.inner_qsets else max(iqs.depth() for iqs in self.inner_qsets)), 0)
-    
 def qset_intersection_bound(qset1, qset2):
     """
     Returns a lower bound on the number of validators in common in any two slices of qset1 and qset2.
@@ -112,12 +118,13 @@ class FBAS:
                 if v not in self.validators():
                     raise ValueError(f"Validator {v} appears in QSet {qs} but not in the FBAS's key range")
 
+    # TODO shouldn't this be in stellarbeat.py?
     @staticmethod
-    def from_stellarbeat_json(data : list):
-        for v in data:
+    def from_stellarbeat_json(data : dict):
+        for v in data.values():
             if 'publicKey' not in v or 'quorumSet' not in v:
                 raise ValueError(f"Invalid validator JSON: {v}")
-        return FBAS({v['publicKey'] : QSet.from_stellarbeat_json(v['quorumSet']) for v in data})
+        return FBAS({v['publicKey'] : QSet.from_stellarbeat_json(v['quorumSet']) for v in data.values()})
     
     def is_org_structured(self) -> bool:
         """
@@ -202,6 +209,9 @@ class FBAS:
         Do that a number of times.
         Also fail immediately if the undirected version of the graph is not connected.
         """
+        pass
+
+    def splitting_set_bound_heuristic(self):
         pass
 
     # TODO: would be nice to use org names as new validator name

@@ -7,14 +7,14 @@ from pysat.examples.optux import OptUx
 
 from fbas import QSet, FBAS
 
-def to_cnf(fmlas : list[Formula]):
+def _to_cnf(fmlas : list[Formula]):
     return [c for f in fmlas for c in f]
 
-def cnf_of_pseudo_atom(a: Formula) -> list:
+def _cnf_of_pseudo_atom(a: Formula) -> list:
     a.clausify()
-    return to_cnf([a])[0]
+    return _to_cnf([a])[0]
 
-def intersection_constraints(fbas : FBAS):
+def _intersection_constraints(fbas : FBAS):
 
     """
     Computes a formula that is satisfiable if and only if there exist two disjoint quorums in the FBAS.
@@ -42,27 +42,28 @@ def intersection_constraints(fbas : FBAS):
     for v in fbas.validators():
         constraints += [Neg(And(in_quorum('A', v), in_quorum('B', v)))]
     # convert to CNF and return:
-    return to_cnf(constraints)
+    return _to_cnf(constraints)
 
-def get_quorum_from_formulas(fmlas, q):
+# TODO: rename to get_tagged_validators?
+def _get_quorum_from_formulas(fmlas, q):
     return [a.object[1] for a in fmlas
             if isinstance(a, Atom) and a.object[0] == q and not isinstance(a.object[1], QSet)]
     
 def check_intersection(fbas : FBAS, solver='cms'):
     """Returns True if and only if all quorums intersect"""
     collapsed_fbas = fbas.collapse_qsets()
-    clauses = intersection_constraints(collapsed_fbas)
+    clauses = _intersection_constraints(collapsed_fbas)
     s = Solver(bootstrap_with=clauses, name=solver)
     res = s.solve()
     if res:
         model = s.get_model()
         fmlas = [f for f in Formula.formulas(model, atoms_only=True)]
         print("Disjoint quorums:")
-        print("Quorum A:", get_quorum_from_formulas(fmlas, 'A'))
-        print("Quorum B:", get_quorum_from_formulas(fmlas, 'B'))
+        print("Quorum A:", _get_quorum_from_formulas(fmlas, 'A'))
+        print("Quorum B:", _get_quorum_from_formulas(fmlas, 'B'))
     return not res
 
-def min_splitting_set_constraints(fbas : FBAS) -> WCNF:
+def _min_splitting_set_constraints(fbas : FBAS, labels = None) -> WCNF:
     """
     Returns a formula that encdes the problem of finding a set of nodes that, if malicious, can cause two quorums to intersect only at malicious nodes, and that is of minimal cardinality.
     The formula consists of a set of hard constraints plus a set of soft constraints.
@@ -70,6 +71,8 @@ def min_splitting_set_constraints(fbas : FBAS) -> WCNF:
 
     The idea of the encoding is like for intersection checking, except that for each validator we add one variable indicating malicious failure, and we adjust the constraints accordingly.
     For each validator, we add a soft constraint stating that it is not malicious.
+
+    TODO: if labels is not None, minimize the number of labels instead of the number of validators.
     """
     constraints : list[Formula] = []
     def in_quorum(q, x):
@@ -90,16 +93,16 @@ def min_splitting_set_constraints(fbas : FBAS) -> WCNF:
         constraints += [Neg(And(Neg(malicious(v)), in_quorum('A', v), in_quorum('B', v)))]
     # convert to weighted CNF, which allows us to add soft constraints to be maximized:
     wcnf = WCNF()
-    wcnf.extend(to_cnf(constraints))
+    wcnf.extend(_to_cnf(constraints))
     # add soft constraints for minimizing the number of malicious nodes (i.e. maximizing the number of non-malicious nodes):
     for v in fbas.validators():
         nm = Neg(malicious(v))
-        wcnf.append(cnf_of_pseudo_atom(nm), weight=1)
+        wcnf.append(_cnf_of_pseudo_atom(nm), weight=1)
     return wcnf
 
 def min_splitting_set(fbas, solver_class=LSU):  # LSU seems to perform the best
     """Returns a splitting set of minimum cardinality"""
-    wncf = min_splitting_set_constraints(fbas)
+    wncf = _min_splitting_set_constraints(fbas)
     maxSAT_solver = solver_class(wncf)
     got_model = maxSAT_solver.compute() if 'compute' in solver_class.__dict__ else maxSAT_solver.solve()
     if got_model:
@@ -107,18 +110,18 @@ def min_splitting_set(fbas, solver_class=LSU):  # LSU seems to perform the best
         model = maxSAT_solver.model
         fmlas = [f for f in Formula.formulas(model, atoms_only=True)]
         print("Disjoint quorums:")
-        print("Quorum A:", get_quorum_from_formulas(fmlas, 'A'))
-        print("Quorum B:", get_quorum_from_formulas(fmlas, 'B'))
+        print("Quorum A:", _get_quorum_from_formulas(fmlas, 'A'))
+        print("Quorum B:", _get_quorum_from_formulas(fmlas, 'B'))
         malicious_nodes = [a.object[1] for a in fmlas if isinstance(a, Atom) and a.object[0] == 'malicious']
         print("Malicious nodes:", malicious_nodes)
         return malicious_nodes
     else:
         return frozenset()
     
-def min_blocking_set_mus_constraints(fbas : FBAS) -> WCNF:
+def _min_blocking_set_mus_constraints(fbas : FBAS) -> WCNF:
     """
     
-    Assert that there is a quorum of non-failed validators, and for each validator add a soft clause asserting that it failed. The ask for an MUS of minimal size.
+    Assert that there is a quorum of non-failed validators, and for each validator add a soft clause asserting that it failed. Then ask for an MUS of minimal size.
     """
     constraints : list[Formula] = []
     def in_quorum(x):
@@ -136,15 +139,15 @@ def min_blocking_set_mus_constraints(fbas : FBAS) -> WCNF:
     constraints += [Implies(in_quorum(v), in_quorum(fbas.qset_map[v]))
                         for v in fbas.validators()]
     wcnf = WCNF()
-    wcnf.extend(to_cnf(constraints))
+    wcnf.extend(_to_cnf(constraints))
     for v in fbas.validators():
         f = failed(v)
-        wcnf.append(cnf_of_pseudo_atom(f), weight=1)
+        wcnf.append(_cnf_of_pseudo_atom(f), weight=1)
     return wcnf
         
 def min_blocking_set_mus(fbas):
     """Returns a blocking set of minimum cardinality"""
-    wcnf = min_blocking_set_mus_constraints(fbas)
+    wcnf = _min_blocking_set_mus_constraints(fbas)
     def get_failed(indices):
         clauses = [wcnf.soft[i-1] for i in indices]
         return [f.object[1] for f in Formula.formulas([f for clause in clauses for f in clause])]
@@ -155,7 +158,7 @@ def min_blocking_set_mus(fbas):
     print(f'Found minimal blocking set of size {len(failed)}: {failed}')
     return failed
 
-def min_blocking_set_constraints(fbas : FBAS) -> WCNF:
+def _min_blocking_set_constraints(fbas : FBAS) -> WCNF:
     """
     For each validator, we create a variable indicating it's in the closure of failed validators and another variable indicating whether it's failed.
     We assert that all non-failed validators are in the closure of failed validators.
@@ -190,15 +193,15 @@ def min_blocking_set_constraints(fbas : FBAS) -> WCNF:
     constraints += [in_closure(x) for x in fbas.validators() | fbas.all_qsets()]
     # finally, we want to maximize the number of non-failed validators:
     wcnf = WCNF()
-    wcnf.extend(to_cnf(constraints))
+    wcnf.extend(_to_cnf(constraints))
     for v in fbas.validators():
         f = Neg(failed(v))
-        wcnf.append(cnf_of_pseudo_atom(f), weight=1)
+        wcnf.append(_cnf_of_pseudo_atom(f), weight=1)
     return wcnf
 
 def min_blocking_set(fbas, solver_class=LSU):  # LSU seems to perform the best
     """Returns a splitting set of minimum cardinality"""
-    wncf = min_blocking_set_constraints(fbas)
+    wncf = _min_blocking_set_constraints(fbas)
     maxSAT_solver = solver_class(wncf)
     got_model = maxSAT_solver.compute() if 'compute' in solver_class.__dict__ else maxSAT_solver.solve()
     if got_model:
@@ -211,7 +214,8 @@ def min_blocking_set(fbas, solver_class=LSU):  # LSU seems to perform the best
     else:
         return frozenset()
 
-def optimal_overlay_constraints(fbas):
+def _optimal_overlay_constraints(fbas):
+    # TODO: try to minimize max degree with an ILP
     # TODO: this is costly; do it only on the org hypergraph
     constraints : list[Formula] = []
     def edge(x, y) -> Formula:
@@ -228,15 +232,15 @@ def optimal_overlay_constraints(fbas):
         for v in fbas.validators()]
     # minimize the number of edges:
     wcnf = WCNF()
-    wcnf.extend(to_cnf(constraints))
+    wcnf.extend(_to_cnf(constraints))
     for v1 in fbas.validators():
         for v2 in fbas.validators() - {v1}:
             f = Neg(edge(v1,v2))
-            wcnf.append(cnf_of_pseudo_atom(f), weight=1)
+            wcnf.append(_cnf_of_pseudo_atom(f), weight=1)
     return wcnf
 
 def optimal_overlay(fbas, solver_class=LSU):  # LSU seems to perform the best
-    wncf = optimal_overlay_constraints(fbas)
+    wncf = _optimal_overlay_constraints(fbas)
     print("computed constraints")
     maxSAT_solver = solver_class(wncf)
     got_model = maxSAT_solver.compute() if 'compute' in solver_class.__dict__ else maxSAT_solver.solve()
