@@ -205,7 +205,7 @@ class FBAS:
         pass
 
     # TODO: would be nice to use org names as new validator name
-    def collapse_qsets(self):
+    def collapse_qsets(self, new_name = None):
 
         """
         A QSet is collapsible if it can safely be replaced by a single (new) validator without impacting quorum intersection.
@@ -213,33 +213,38 @@ class FBAS:
         It might then be easier to check quorum intersection.
         """
         def is_collapsible(qset):
-            return (
+            res = (
                 # no inner QSets:
                 not qset.inner_qsets
                 # the validators of this QSet do not appear anywhere else:
-                and all(not (qset.validators & qs.all_validators()) for qs in self.all_qsets() if qs != qset)
+                and all(not (qset.validators & qs.validators) for qs in self.all_qsets() if qs != qset)
                 # the validators of this QSet all have the same QSet:
                 and len({self.qset_map[v] for v in qset.validators}) == 1
                 # threshold is greater than half:
                 and 2*qset.threshold > len(qset.validators))
+            if new_name:
+                print(f"qset {new_name(qset)} collapsible: {res}")
+            return res
         # for each collapsible QSet, create a new validator:
         collapsible = list({qs for qs in self.all_qsets() if is_collapsible(qs)})
-        new_validators = {qs : collapsible.index(qs) for qs in collapsible}
-        if new_validators.values() & self.validators():
+        # TODO why is this not a function?
+        validator_of_qset = {qs : new_name(qs) if new_name and new_name(qs) else collapsible.index(qs) for qs in collapsible}
+        if validator_of_qset.values() & self.validators():
             raise Exception("New validators clash with existing validators (should not happen if validators are identified by strings)")
         # now replace all the collapsible qsets:
         def replace_collapsible(qs):
             if qs in collapsible:
-                return QSet.make(1, [new_validators[qs]], [])
+                return QSet.make(1, [validator_of_qset[qs]], [])
             else:
                 return QSet.make(
                     qs.threshold,
-                    qs.validators| {replace_collapsible(cqs)
-                                    for cqs in qs.inner_qsets & set(collapsible)},
+                    qs.validators | {validator_of_qset[cqs]
+                                     for cqs in qs.inner_qsets & set(collapsible)},
                     (ncqs for ncqs in qs.inner_qsets if ncqs not in collapsible))
         def qset_of_collapsible(qset):
-            qset_of_members = self.qset_map[next(iter(qset.validators))]
-            return qset_of_members if qset_of_members not in collapsible else QSet.make(1,[new_validators[qset_of_members]],[])
+            qset_of_members = self.qset_map[next(iter(qset.validators))] if qset.validators else None
+            return replace_collapsible(qset_of_members) if qset_of_members not in collapsible else QSet.make(1,[validator_of_qset[qset_of_members]],[])
+        # TODO we also have to remove the validators that are no longer needed!
         new_qset_map = ({v : replace_collapsible(qs) for v, qs in self.qset_map.items()} |
-                        {new_validators[qs] : qset_of_collapsible(qs) for qs in collapsible})
+                        {validator_of_qset[qs] : qset_of_collapsible(qs) for qs in collapsible})
         return FBAS(new_qset_map)
