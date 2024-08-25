@@ -1,15 +1,18 @@
+"""
+A module for representing and working with Federated Byzantine Agreement Systems (FBAS).
+"""
 # TODO debug prints
 
-from utils import fixpoint
 from dataclasses import dataclass
-import networkx as nx
 from itertools import combinations
 from typing import Any
+import networkx as nx
+from utils import fixpoint
 
 @dataclass(frozen=True)
 class QSet:
 
-    """Stellar's so-called quorum sets (which are not sets of quorums, but instead represent sets of quorum slices)"""
+    """Stellar's so-called quorum sets (which are NOT sets of quorums, but instead represent sets of quorum slices)"""
 
     threshold: int
     validators: frozenset
@@ -35,7 +38,7 @@ class QSet:
         return f"QSet({self.threshold},{str(set(self.validators)) if self.validators else '{}'},{str(set(self.inner_qsets)) if self.inner_qsets else '{}'})"
 
     @staticmethod
-    def make(threshold, validators, inner_qsets):
+    def make(threshold : int, validators, inner_qsets):
         return QSet(threshold, frozenset(validators), frozenset(inner_qsets))
     
     # TODO shouldn't this be in stellarbeat.py?
