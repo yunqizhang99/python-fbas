@@ -1,4 +1,4 @@
-from sat_based_fbas_analysis import *
+from sat_based_fbas_analysis import check_intersection, min_splitting_set, min_blocking_set, min_blocking_set_mus, optimal_overlay
 from fbas import QSet, FBAS
 from test_utils import get_test_data_file_path, get_validators_from_file
 

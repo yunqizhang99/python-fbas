@@ -1,9 +1,8 @@
-from timeit import *
-from sat_based_fbas_analysis import check_intersection
-from test_utils import get_validators_from_file
-from fbas import FBAS
+from timeit import timeit
 from pysat.solvers import SolverNames
-from test_utils import get_test_data_file_path
+from sat_based_fbas_analysis import check_intersection
+from fbas import FBAS
+from test_utils import get_test_data_file_path, get_validators_from_file
 
 # get all the solvers available:
 solvers = {f : getattr(SolverNames,f)[0] for f in dir(SolverNames) if not f.startswith('__')}
