@@ -1,7 +1,7 @@
 import pytest
-from fbas import *
+from python_fbas.fbas import *
 from test_utils import get_test_data_file_path, get_validators_from_file
-import stellarbeat
+import python_fbas.stellarbeat as stellarbeat
 
 q1 = QSet.make(3, [1,2,3,4],[])
 o1 = QSet.make(2, [11,12,13],[])

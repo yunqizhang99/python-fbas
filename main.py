@@ -1,6 +1,6 @@
 import argparse
-from sat_based_fbas_analysis import check_intersection, min_splitting_set, min_blocking_set, optimal_overlay
-from fbas import FBAS
+from python_fbas.sat_based_fbas_analysis import check_intersection, min_splitting_set, min_blocking_set, optimal_overlay
+from python_fbas.fbas import FBAS
 from test_utils import get_validators_from_file
 
 def load_fbas_from_file(validators_file):

@@ -1,7 +1,7 @@
 from timeit import timeit
 from pysat.solvers import SolverNames
-from sat_based_fbas_analysis import check_intersection
-from fbas import FBAS
+from python_fbas.sat_based_fbas_analysis import check_intersection
+from python_fbas.fbas import FBAS
 from test_utils import get_test_data_file_path, get_validators_from_file
 
 # get all the solvers available:

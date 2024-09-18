@@ -1,11 +1,10 @@
-from itertools import combinations
 from pysat.solvers import Solver
 from pysat.card import *
 from pysat.formula import *
 from pysat.examples.lsu import LSU
 from pysat.examples.optux import OptUx
 
-from fbas import QSet, FBAS
+from .fbas import QSet, FBAS
 
 def _to_cnf(fmlas : list[Formula]):
     return [c for f in fmlas for c in f]

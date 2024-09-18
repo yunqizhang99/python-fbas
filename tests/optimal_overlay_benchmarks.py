@@ -1,8 +1,8 @@
 from timeit import *
-from sat_based_fbas_analysis import optimal_overlay
+from python_fbas.sat_based_fbas_analysis import optimal_overlay
 
-from stellarbeat import get_validators_from_file
-from fbas import FBAS
+from test_utils import get_validators_from_file
+from python_fbas.fbas import FBAS
 from test_utils import get_test_data_file_path
 
 def benchmark():

@@ -3,7 +3,7 @@ import os
 from typing import Optional
 from requests import get
 from platformdirs import user_cache_dir
-import fbas
+import python_fbas.fbas as fbas
 
 STELLARBEAT_URL = "https://api.stellarbeat.io/v1/node"
 validators = dict() # will be populated with data from stellarbeat at module initialization

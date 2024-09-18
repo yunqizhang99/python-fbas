@@ -1,7 +1,7 @@
 from timeit import *
-from sat_based_fbas_analysis import min_splitting_set, check_intersection, min_blocking_set
-from stellarbeat import get_validators_from_file
-from fbas import FBAS
+from python_fbas.sat_based_fbas_analysis import min_splitting_set, check_intersection, min_blocking_set
+from test_utils import get_validators_from_file
+from python_fbas.fbas import FBAS
 from test_utils import get_test_data_file_path
 from pysat.examples.fm import FM
 from pysat.examples.lsu import LSU

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from itertools import combinations
 from typing import Any
 import networkx as nx
-from utils import fixpoint
+from .utils import fixpoint
 
 @dataclass(frozen=True)
 class QSet:
