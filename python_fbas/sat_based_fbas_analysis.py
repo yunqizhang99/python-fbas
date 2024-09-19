@@ -64,7 +64,7 @@ def check_intersection(fbas : FBAS, solver='cms'):
 
 def _min_splitting_set_constraints(fbas : FBAS, labels = None) -> WCNF:
     """
-    Returns a formula that encdes the problem of finding a set of nodes that, if malicious, can cause two quorums to intersect only at malicious nodes, and that is of minimal cardinality.
+    Returns a formula that encodes the problem of finding a set of nodes that, if malicious, can cause two quorums to intersect only at malicious nodes, and that is of minimal cardinality.
     The formula consists of a set of hard constraints plus a set of soft constraints.
     A maxSAT solver will try to satisfy all the hard constraints and as many soft constraints as possible.
 

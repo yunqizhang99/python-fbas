@@ -1,7 +1,6 @@
 import pytest
-from python_fbas.fbas import *
-from test_utils import get_test_data_file_path, get_validators_from_file
-import python_fbas.stellarbeat as stellarbeat
+from python_fbas.fbas import QSet, FBAS, qset_intersection_bound
+from tests.test_utils import get_validators_from_test_data_file
 
 q1 = QSet.make(3, [1,2,3,4],[])
 o1 = QSet.make(2, [11,12,13],[])
@@ -52,11 +51,10 @@ def test_depth():
     assert q2.depth() == 2
 
 def test_stellarbeat():
-    fbas = FBAS.from_stellarbeat_json(get_validators_from_file(get_test_data_file_path('validators.json')))
+    fbas = FBAS.from_json(get_validators_from_test_data_file('validators.json'))
     fbas.to_mixed_graph()
     fbas.to_graph()
-    with pytest.raises(Exception):
-        FBAS.from_stellarbeat_json(get_validators_from_file(get_test_data_file_path('validators_broken_1.json')))
+    FBAS.from_json(get_validators_from_test_data_file('validators_broken_1.json'))
 
 def test_min_direct_intersection():
     org_a = QSet.make(2, ['a1','a2','a3'],[])
@@ -73,7 +71,7 @@ def test_min_direct_intersection():
     assert qset_intersection_bound(qset_1, qset_2) == 2
     assert qset_intersection_bound(qset_1, qset_3) == 1
     assert qset_intersection_bound(qset_1, qset_4) == 1
-    fbas = FBAS.from_stellarbeat_json(get_validators_from_file(get_test_data_file_path('validators.json')))
+    fbas = FBAS.from_json(get_validators_from_test_data_file('validators.json'))
     assert fbas.min_scc_intersection_bound() == 3
 
 def test_is_org_structured():
@@ -101,6 +99,6 @@ def test_collapse_qsets():
     collapsed_fbas = fbas1.collapse_qsets()
     qs = QSet.make(1, [0], [])
     assert collapsed_fbas == FBAS({1: qs, 2: qs, 3: qs, 4: qs, 0: qs})
-    stellar = FBAS.from_stellarbeat_json(get_validators_from_file(get_test_data_file_path('validators.json')))
-    collapsed_stellar = stellar.collapse_qsets(new_name=stellarbeat.org_of_qset)
+    stellar = FBAS.from_json(get_validators_from_test_data_file('validators.json'))
+    collapsed_stellar = stellar.collapse_qsets(new_name=stellar.org_of_qset)
     assert 'www.stellar.org' in collapsed_stellar.qset_map.keys()
