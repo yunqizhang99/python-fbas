@@ -1,3 +1,4 @@
+import logging
 from pysat.solvers import Solver
 from pysat.card import *
 from pysat.formula import *
@@ -6,12 +7,14 @@ from pysat.examples.optux import OptUx
 
 from .fbas import QSet, FBAS
 
-def _to_cnf(fmlas : list[Formula]):
+def _to_cnf(fmlas : list[Formula]) -> list:
+    # NOTE: iterating through f first triggers clausification
     return [c for f in fmlas for c in f]
 
-def _cnf_of_pseudo_atom(a: Formula) -> list:
+def _clause_of_pseudo_atom(a: Formula) -> list:
+    """a must be of the form Neg(Atom(...)); returns the clause corresponding to a"""
     a.clausify()
-    return _to_cnf([a])[0]
+    return a.clauses[0]
 
 def _intersection_constraints(fbas : FBAS):
 
@@ -62,7 +65,7 @@ def check_intersection(fbas : FBAS, solver='cms'):
         print("Quorum B:", _get_quorum_from_formulas(fmlas, 'B'))
     return not res
 
-def _min_splitting_set_constraints(fbas : FBAS, labels = None) -> WCNF:
+def _min_splitting_set_constraints(fbas : FBAS, group_by = None) -> WCNF:
     """
     Returns a formula that encodes the problem of finding a set of nodes that, if malicious, can cause two quorums to intersect only at malicious nodes, and that is of minimal cardinality.
     The formula consists of a set of hard constraints plus a set of soft constraints.
@@ -70,9 +73,12 @@ def _min_splitting_set_constraints(fbas : FBAS, labels = None) -> WCNF:
 
     The idea of the encoding is like for intersection checking, except that for each validator we add one variable indicating malicious failure, and we adjust the constraints accordingly.
     For each validator, we add a soft constraint stating that it is not malicious.
-
-    TODO: if labels is not None, minimize the number of labels instead of the number of validators.
     """
+
+    # if group_by is not None, first check that all validators have a group:
+    if group_by is not None and not fbas.all_have_meta_field(group_by):
+        raise ValueError(f"Grouping field {group_by} is not defined for all validators")
+
     constraints : list[Formula] = []
     def in_quorum(q, x):
         return Atom((q, x))
@@ -90,30 +96,77 @@ def _min_splitting_set_constraints(fbas : FBAS, labels = None) -> WCNF:
     # no non-malicious validator can be in both quorums:
     for v in fbas.validators():
         constraints += [Neg(And(Neg(malicious(v)), in_quorum('A', v), in_quorum('B', v)))]
+    # if group_by is not None, we add one variable per group denoting whether the group is malicious and we add constraints to ensure that all members of a group are malicious or none is:
+    if group_by is not None:
+        groups = fbas.meta_field_values(group_by)
+        def group_members(g):
+            return [v for v in fbas.validators() if fbas.metadata[v][group_by] == g]
+        for g in groups:
+            constraints += [Equals(malicious(g), And(*[malicious(v) for v in group_members(g)]))]
+            logging.debug("group constraint for %s: %s", g, _to_cnf([Equals(malicious(g), And(*[malicious(v) for v in group_members(g)]))]))
     # convert to weighted CNF, which allows us to add soft constraints to be maximized:
     wcnf = WCNF()
     wcnf.extend(_to_cnf(constraints))
-    # add soft constraints for minimizing the number of malicious nodes (i.e. maximizing the number of non-malicious nodes):
-    for v in fbas.validators():
-        nm = Neg(malicious(v))
-        wcnf.append(_cnf_of_pseudo_atom(nm), weight=1)
+    if group_by is None:
+        # add soft constraints for minimizing the number of malicious nodes (i.e. maximizing the number of non-malicious nodes):
+        for v in fbas.validators():
+            nm = Neg(malicious(v))
+            wcnf.append(_clause_of_pseudo_atom(nm), weight=1)
+    else:
+        # add soft constraints for minimizing the number of malicious groups:
+        for g in groups:
+            logging.debug("adding soft constraint for group %s", g)
+            nm = Neg(malicious(g))
+            # nm = malicious(g)
+            wcnf.append(_clause_of_pseudo_atom(nm), weight=1)
+    # debug:
+    vs = [Atom(('malicious',v)) for v in fbas.validators()]
+    for v in vs:
+        v.clausify()
+    logging.debug("validators: %s", {v.clauses[0][0] for v in vs})
+    if group_by is not None:
+        gs = [Atom(('malicious',g)) for g in groups]
+        for g in gs:
+            g.clausify()
+        logging.debug("groups: %s", {g.clauses[0][0] for g in gs})
     return wcnf
 
-def min_splitting_set(fbas, solver_class=LSU):  # LSU seems to perform the best
+# TODO: debug!
+def min_splitting_set(fbas, solver_class=LSU, group_by=None):  # LSU seems to perform the best
     """Returns a splitting set of minimum cardinality"""
-    wncf = _min_splitting_set_constraints(fbas)
-    maxSAT_solver = solver_class(wncf)
+    logging.debug("groups are %s", fbas.meta_field_values(group_by) if group_by is not None else None)
+    wcnf = _min_splitting_set_constraints(fbas, group_by)
+    maxSAT_solver = solver_class(wcnf)
     got_model = maxSAT_solver.compute() if 'compute' in solver_class.__dict__ else maxSAT_solver.solve()
     if got_model:
-        print(f'Found minimal splitting set of size {maxSAT_solver.cost}')
         model = maxSAT_solver.model
-        fmlas = [f for f in Formula.formulas(model, atoms_only=True)]
-        print("Disjoint quorums:")
-        print("Quorum A:", _get_quorum_from_formulas(fmlas, 'A'))
-        print("Quorum B:", _get_quorum_from_formulas(fmlas, 'B'))
-        malicious_nodes = [a.object[1] for a in fmlas if isinstance(a, Atom) and a.object[0] == 'malicious']
-        print("Malicious nodes:", malicious_nodes)
-        return malicious_nodes
+        if group_by is not None:
+            print(f'Found minimal splitting set of size {maxSAT_solver.cost} groups')
+            fmlas = [f for f in Formula.formulas(model, atoms_only=True)]
+            logging.debug("Model atoms: %s", [f for f in fmlas if isinstance(f, Atom)])
+            malicious_groups = [
+                a.object[1] for a in fmlas
+                    if isinstance(a, Atom) and a.object[0] == 'malicious'
+                        and a.object[1] in fbas.meta_field_values(group_by)
+            ]
+            print("Minimal splitting set:", malicious_groups)
+            print("Disjoint quorums:")
+            print("Quorum A:", _get_quorum_from_formulas(fmlas, 'A'))
+            print("Quorum B:", _get_quorum_from_formulas(fmlas, 'B'))
+            malicious_nodes = [
+                a.object[1] for a in fmlas
+                    if isinstance(a, Atom) and a.object[0] == 'malicious'
+                        and a.object[1] not in fbas.meta_field_values(group_by)]
+            print("Splitting node set:", malicious_nodes)
+        else:
+            print(f'Found minimal splitting set of size {maxSAT_solver.cost} nodes')
+            fmlas = [f for f in Formula.formulas(model, atoms_only=True)]
+            print("Disjoint quorums:")
+            print("Quorum A:", _get_quorum_from_formulas(fmlas, 'A'))
+            print("Quorum B:", _get_quorum_from_formulas(fmlas, 'B'))
+            malicious_nodes = [a.object[1] for a in fmlas if isinstance(a, Atom) and a.object[0] == 'malicious']
+            print("Minimal splitting set:", malicious_nodes)
+            return malicious_nodes
     else:
         return frozenset()
     
@@ -141,7 +194,7 @@ def _min_blocking_set_mus_constraints(fbas : FBAS) -> WCNF:
     wcnf.extend(_to_cnf(constraints))
     for v in fbas.validators():
         f = failed(v)
-        wcnf.append(_cnf_of_pseudo_atom(f), weight=1)
+        wcnf.append(_clause_of_pseudo_atom(f), weight=1)
     return wcnf
         
 def min_blocking_set_mus(fbas):
@@ -195,7 +248,7 @@ def _min_blocking_set_constraints(fbas : FBAS) -> WCNF:
     wcnf.extend(_to_cnf(constraints))
     for v in fbas.validators():
         f = Neg(failed(v))
-        wcnf.append(_cnf_of_pseudo_atom(f), weight=1)
+        wcnf.append(_clause_of_pseudo_atom(f), weight=1)
     return wcnf
 
 def min_blocking_set(fbas, solver_class=LSU):  # LSU seems to perform the best
@@ -213,7 +266,7 @@ def min_blocking_set(fbas, solver_class=LSU):  # LSU seems to perform the best
     else:
         return frozenset()
 
-def _optimal_overlay_constraints(fbas):
+def _optimal_overlay_constraints(fbas : FBAS):
     # TODO: try to minimize max degree with an ILP
     # TODO: this is costly; do it only on the org hypergraph
     constraints : list[Formula] = []
@@ -235,14 +288,16 @@ def _optimal_overlay_constraints(fbas):
     for v1 in fbas.validators():
         for v2 in fbas.validators() - {v1}:
             f = Neg(edge(v1,v2))
-            wcnf.append(_cnf_of_pseudo_atom(f), weight=1)
+            wcnf.append(_clause_of_pseudo_atom(f), weight=1)
     return wcnf
 
 def optimal_overlay(fbas, solver_class=LSU):  # LSU seems to perform the best
     wncf = _optimal_overlay_constraints(fbas)
     print("computed constraints")
     maxSAT_solver = solver_class(wncf)
-    got_model = maxSAT_solver.compute() if 'compute' in solver_class.__dict__ else maxSAT_solver.solve()
+    got_model = (
+        maxSAT_solver.compute() if 'compute' in solver_class.__dict__ else maxSAT_solver.solve()
+    )
     if got_model:
         print(f'Found minimal overlay of cost {maxSAT_solver.cost}')
         model = maxSAT_solver.model
