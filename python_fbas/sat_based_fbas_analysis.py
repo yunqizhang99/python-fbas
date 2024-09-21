@@ -77,7 +77,7 @@ def _min_splitting_set_constraints(fbas : FBAS, group_by = None) -> WCNF:
 
     # if group_by is not None, first check that all validators have a group:
     if group_by is not None and not fbas.all_have_meta_field(group_by):
-        raise ValueError(f"Grouping field {group_by} is not defined for all validators")
+        raise ValueError(f"Grouping field \"{group_by}\" is not defined for all validators")
 
     constraints : list[Formula] = []
     def in_quorum(q, x):
@@ -102,8 +102,8 @@ def _min_splitting_set_constraints(fbas : FBAS, group_by = None) -> WCNF:
         def group_members(g):
             return [v for v in fbas.validators() if fbas.metadata[v][group_by] == g]
         for g in groups:
-            constraints += [Equals(malicious(g), And(*[malicious(v) for v in group_members(g)]))]
-            logging.debug("group constraint for %s: %s", g, _to_cnf([Equals(malicious(g), And(*[malicious(v) for v in group_members(g)]))]))
+            constraints += [Implies(malicious(g), And(*[malicious(v) for v in group_members(g)]))]
+            constraints += [Implies(Or(*[malicious(v) for v in group_members(g)]), malicious(g))]
     # convert to weighted CNF, which allows us to add soft constraints to be maximized:
     wcnf = WCNF()
     wcnf.extend(_to_cnf(constraints))
@@ -115,26 +115,12 @@ def _min_splitting_set_constraints(fbas : FBAS, group_by = None) -> WCNF:
     else:
         # add soft constraints for minimizing the number of malicious groups:
         for g in groups:
-            logging.debug("adding soft constraint for group %s", g)
             nm = Neg(malicious(g))
-            # nm = malicious(g)
             wcnf.append(_clause_of_pseudo_atom(nm), weight=1)
-    # debug:
-    vs = [Atom(('malicious',v)) for v in fbas.validators()]
-    for v in vs:
-        v.clausify()
-    logging.debug("validators: %s", {v.clauses[0][0] for v in vs})
-    if group_by is not None:
-        gs = [Atom(('malicious',g)) for g in groups]
-        for g in gs:
-            g.clausify()
-        logging.debug("groups: %s", {g.clauses[0][0] for g in gs})
     return wcnf
 
-# TODO: debug!
 def min_splitting_set(fbas, solver_class=LSU, group_by=None):  # LSU seems to perform the best
     """Returns a splitting set of minimum cardinality"""
-    logging.debug("groups are %s", fbas.meta_field_values(group_by) if group_by is not None else None)
     wcnf = _min_splitting_set_constraints(fbas, group_by)
     maxSAT_solver = solver_class(wcnf)
     got_model = maxSAT_solver.compute() if 'compute' in solver_class.__dict__ else maxSAT_solver.solve()
@@ -142,32 +128,33 @@ def min_splitting_set(fbas, solver_class=LSU, group_by=None):  # LSU seems to pe
         model = maxSAT_solver.model
         if group_by is not None:
             print(f'Found minimal splitting set of size {maxSAT_solver.cost} groups')
-            fmlas = [f for f in Formula.formulas(model, atoms_only=True)]
-            logging.debug("Model atoms: %s", [f for f in fmlas if isinstance(f, Atom)])
+            fmlas = Formula.formulas(model, atoms_only=True)
             malicious_groups = [
                 a.object[1] for a in fmlas
                     if isinstance(a, Atom) and a.object[0] == 'malicious'
                         and a.object[1] in fbas.meta_field_values(group_by)
             ]
             print("Minimal splitting set:", malicious_groups)
-            print("Disjoint quorums:")
-            print("Quorum A:", _get_quorum_from_formulas(fmlas, 'A'))
-            print("Quorum B:", _get_quorum_from_formulas(fmlas, 'B'))
+            logging.info("Disjoint quorums:")
+            logging.info("Quorum A: %s", _get_quorum_from_formulas(fmlas, 'A'))
+            logging.info("Quorum B: %s", _get_quorum_from_formulas(fmlas, 'B'))
             malicious_nodes = [
                 a.object[1] for a in fmlas
                     if isinstance(a, Atom) and a.object[0] == 'malicious'
                         and a.object[1] not in fbas.meta_field_values(group_by)]
-            print("Splitting node set:", malicious_nodes)
+            logging.info("Splitting node set: %s", malicious_nodes)
+            return malicious_groups
         else:
             print(f'Found minimal splitting set of size {maxSAT_solver.cost} nodes')
-            fmlas = [f for f in Formula.formulas(model, atoms_only=True)]
-            print("Disjoint quorums:")
-            print("Quorum A:", _get_quorum_from_formulas(fmlas, 'A'))
-            print("Quorum B:", _get_quorum_from_formulas(fmlas, 'B'))
+            fmlas = Formula.formulas(model, atoms_only=True)
             malicious_nodes = [a.object[1] for a in fmlas if isinstance(a, Atom) and a.object[0] == 'malicious']
             print("Minimal splitting set:", malicious_nodes)
+            print("Quorums that intersect only in the splitting set:")
+            print("Quorum A:", _get_quorum_from_formulas(fmlas, 'A'))
+            print("Quorum B:", _get_quorum_from_formulas(fmlas, 'B'))
             return malicious_nodes
     else:
+        print("No splitting set found")
         return frozenset()
     
 def _min_blocking_set_mus_constraints(fbas : FBAS) -> WCNF:

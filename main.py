@@ -18,9 +18,10 @@ def main():
     parser.add_argument('--log-level', default='WARNING', help="Logging level")
     
     # specify a data source:
-    parser.add_argument('--data-source', default='stellarbeat', help="Where to find the description of the FBAS to analyze")
+    parser.add_argument('--fbas', default='stellarbeat', help="Where to find the description of the FBAS to analyze")
 
     # specify whether to group validators by some metadata field:
+    # TODO allow specifying a nested attribute
     parser.add_argument('--group-by', default=None, help="Group validators using the provided metadata field (e.g. 'homeDomain')")
 
     # subcommands:
@@ -56,10 +57,10 @@ def main():
         return fbas
 
     def _load_fbas():
-        if args.data_source == 'stellarbeat':
+        if args.fbas == 'stellarbeat':
             return _load_fbas_from_stellarbeat()
         else:
-            return load_fbas_from_file(args.data_source)
+            return load_fbas_from_file(args.fbas)
 
     # Parse arguments
     args = parser.parse_args()

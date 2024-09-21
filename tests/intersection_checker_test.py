@@ -35,3 +35,7 @@ def test_min_blocking_set_mus():
 def test_optimal_overlay():
     assert len(optimal_overlay(fbas1)) == 5
     assert len(optimal_overlay(fbas2)) == 6
+
+def test_group_by_1():
+    fbas = FBAS.from_json(get_validators_from_test_data_file('homedomain_test_1.json'))
+    assert min_splitting_set(fbas, group_by='homeDomain') == ["domain-2"]
