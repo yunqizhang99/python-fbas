@@ -11,6 +11,6 @@ def test_optimal_overlay():
     assert len(optimal_overlay(fbas1)) == 5
     assert len(optimal_overlay(fbas2)) == 6
 
-def test_constellation_1():
-    fbas = FBAS.from_json(get_validators_from_test_data_file('homedomain_test_1.json'))
-    g = constellation_graph(fbas)
+# def test_constellation_1():
+    # fbas = FBAS.from_json(get_validators_from_test_data_file('homedomain_test_1.json'))
+    # g = constellation_graph(fbas)

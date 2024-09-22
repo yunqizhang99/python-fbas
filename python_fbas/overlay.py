@@ -16,10 +16,12 @@ def _constellation_constraints(fbas : FBAS):
     # also check that each validator of an org has the same QSet, and that this QSet is of the form k-out-of-n orgs:
     orgs = fbas.meta_field_values('homeDomain')
     for org in orgs:
-        qsets = {fbas.qset_map[v] for v in fbas.validators_with_meta_field_value('homeDomain', org)}
-        # if len(qsets) > 1:
-            # raise ValueError(f"Validators of org {org} have different QSets: {qsets}")
-        if qsets.pop().validators:
+        qsets = {v : fbas.qset_map[v] for v in fbas.validators_with_meta_field_value('homeDomain', org)}
+        if len(set(qsets.values())) > 1:
+            # logging.error(f"Validators of org {org} have {len(set(qsets.values()))} different QSets:\n{chr(10).join(fbas.validator_name(v) + fbas.format_qset(q) for v,q in qsets.items())}")
+            logging.error(f"Validators of org {org} have {len(set(qsets.values()))} different QSets:\n{chr(10).join(str(q) for q in set(qsets.values()))}")
+            raise ValueError(f"Validators of org {org} have {len(set(qsets.values()))} different QSets")
+        if list(qsets.values()).pop().validators:
             raise ValueError(f"QSet of org {org} is not of the right form")
 
     constraints : list[Formula] = []
@@ -70,9 +72,10 @@ def constellation_graph(fbas, solver_class=LSU) -> Optional[dict]:
         print(f'Found constellation graph of cost {maxSAT_solver.cost}')
         model = maxSAT_solver.model
         fmlas = Formula.formulas(model, atoms_only=True)
+        orgs = fbas.meta_field_values('homeDomain')
         groups = {
-            g : {v for v in fbas.validators()
-                    if Atom(('in-group', g, v)) in fmlas} for g in _constellation_groups(fbas)}
+            g : {o for o in orgs
+                    if Atom(('in-group', g, o)) in fmlas} for g in _constellation_groups(fbas)}
         print ("groups: ", groups)
         return groups
     else:

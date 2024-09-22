@@ -1,10 +1,10 @@
 """
 A module for representing and working with Federated Byzantine Agreement Systems (FBAS).
 """
-# TODO debug prints
 
 from dataclasses import dataclass
 import logging
+from pprint import pformat
 from itertools import combinations, product
 from typing import Any, Optional
 import networkx as nx
@@ -38,7 +38,10 @@ class QSet:
         return bool(self.validators | self.inner_qsets)
 
     def __str__(self):
-        return f"QSet({self.threshold},{str(set(self.validators)) if self.validators else '{}'},{str(set(self.inner_qsets)) if self.inner_qsets else '{}'})"
+        return f"""QSet(
+            {self.threshold},
+            {str(set(self.validators)) if self.validators else '{}'},
+            {str(set(self.inner_qsets)) if self.inner_qsets else '{}'})"""
 
     @staticmethod
     def make(threshold: int, validators, inner_qsets):
@@ -103,7 +106,13 @@ class QSet:
     def all_validators(self):
         """Returns the set of all validators appearing (recursively) in this QSet."""
         return self.validators | set().union(*(iqs.all_validators() for iqs in self.inner_qsets))
-
+    
+    def to_dict(self):
+        return {
+            'threshold': self.threshold,
+            'validators': list(self.validators),
+            'innerQuorumSets': [iqs.to_dict() for iqs in self.inner_qsets]
+        }
 
 def qset_intersection_bound(qset1, qset2):
     """
@@ -156,6 +165,7 @@ class FBAS:
         if missing:
             self.qset_map.update({v: QSet.make(0, [], []) for v in missing})
 
+    # TODO: this is stellarbeat specific
     def sanitize(self) -> 'FBAS':
         # A validator is invalid if it has 'isValidator' or 'isValidating' set to False or its QSet contains a validator that does not appear in the qset_map:
         def is_valid(v, qsm):
@@ -178,6 +188,7 @@ class FBAS:
 
         return FBAS(new_qset_map, self.metadata)
 
+    # TODO also stellarbeat specific:
     @staticmethod
     def from_json(data: list):
         if not isinstance(data, list):
@@ -384,3 +395,20 @@ class FBAS:
     
     def validators_with_meta_field_value(self, field : str, value : str) -> set:
         return {v for v in self.validators() if self.metadata[v].get(field) == value}
+    
+    def validator_name(self, v) -> str:
+        return (
+            self.metadata.get(v).get('name')
+                if self.metadata.get(v) and self.metadata.get(v).get('name')
+            else str(v)
+        )
+
+    def format_qset(self, qset : QSet) -> str:
+        def as_dict(qset):
+            return {
+                'threshold': qset.threshold,
+                'validators': [self.validator_name(v) for v in qset.validators],
+                'innerQuorumSets': [as_dict(iqs) for iqs in qset.inner_qsets]
+            }
+        return pformat(as_dict(qset), indent=2)
+
