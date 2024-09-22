@@ -1,0 +1,4 @@
+networkx==3.3
+platformdirs==4.3.6
+python_sat==1.8.dev13
+Requests==2.32.3
