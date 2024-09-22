@@ -5,7 +5,7 @@ A module for representing and working with Federated Byzantine Agreement Systems
 
 from dataclasses import dataclass
 import logging
-from itertools import combinations
+from itertools import combinations, product
 from typing import Any, Optional
 import networkx as nx
 from .utils import fixpoint
@@ -19,7 +19,6 @@ class QSet:
     threshold: int
     validators: frozenset
     inner_qsets: frozenset  # a set of QSets
-    metadata: Optional[dict]
 
     def __post_init__(self):
         # check that no validator appears twice in the qset:
@@ -42,8 +41,8 @@ class QSet:
         return f"QSet({self.threshold},{str(set(self.validators)) if self.validators else '{}'},{str(set(self.inner_qsets)) if self.inner_qsets else '{}'})"
 
     @staticmethod
-    def make(threshold: int, validators, inner_qsets, metadata: Optional[dict] = None):
-        return QSet(threshold, frozenset(validators), frozenset(inner_qsets), metadata)
+    def make(threshold: int, validators, inner_qsets):
+        return QSet(threshold, frozenset(validators), frozenset(inner_qsets))
 
     @staticmethod
     def from_json(data: dict):
@@ -59,14 +58,26 @@ class QSet:
     def depth(self):
         return 1 + (0 if not self.inner_qsets else max(iqs.depth() for iqs in self.inner_qsets))
 
-    def slices(self):
+    def level_1_slices(self):
         return combinations(self.elements(), self.threshold)
 
     def blocking_threshold(self):
         return len(self.elements()) - self.threshold + 1
 
-    def v_blocking_sets(self):
+    def level_1_v_blocking_sets(self):
         return combinations(self.elements(), self.blocking_threshold())
+    
+    def slices(self) -> set[set] :
+        def slices_of_level_1_slice(s):
+            l = [e.slices() if isinstance(e, QSet) else frozenset([frozenset([e])]) for e in s]
+            return {frozenset().union(*t) for t in product(*l)}
+        return {s for s1 in self.level_1_slices() for s in slices_of_level_1_slice(s1)}
+    
+    def blocking_sets(self) -> set[set] :
+        def v_blocking_of_level_1_blocking(b):
+            l = [e.blocking_sets() if isinstance(e, QSet) else frozenset([frozenset([e])]) for e in b]
+            return {frozenset().union(*t) for t in product(*l)}
+        return {b for b1 in self.level_1_v_blocking_sets() for b in v_blocking_of_level_1_blocking(b1)}
 
     def sat(self, validators):
         """Whether the agreement requirements encoded by this QSet are satisfied by the given set of validators."""
@@ -370,3 +381,6 @@ class FBAS:
     
     def meta_field_values(self, field : str) -> set[str]:
         return {self.metadata[v].get(field) for v in self.validators()} - {None}
+    
+    def validators_with_meta_field_value(self, field : str, value : str) -> set:
+        return {v for v in self.validators() if self.metadata[v].get(field) == value}

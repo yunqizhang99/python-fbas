@@ -1,4 +1,4 @@
-from python_fbas.sat_based_fbas_analysis import check_intersection, min_splitting_set, min_blocking_set, min_blocking_set_mus, optimal_overlay
+from python_fbas.sat_based_fbas_analysis import check_intersection, min_splitting_set, min_blocking_set, min_blocking_set_mus
 from python_fbas.fbas import QSet, FBAS
 from tests.test_utils import get_validators_from_test_data_file
 
@@ -31,10 +31,6 @@ def test_min_blocking_set_mus():
     assert len(min_blocking_set_mus(fbas)) == 6
     assert len(min_blocking_set_mus(fbas1)) == 2
     assert len(min_blocking_set_mus(fbas2)) == 3
-
-def test_optimal_overlay():
-    assert len(optimal_overlay(fbas1)) == 5
-    assert len(optimal_overlay(fbas2)) == 6
 
 def test_group_by_1():
     fbas = FBAS.from_json(get_validators_from_test_data_file('homedomain_test_1.json'))

@@ -6,15 +6,7 @@ from pysat.examples.lsu import LSU
 from pysat.examples.optux import OptUx
 
 from .fbas import QSet, FBAS
-
-def _to_cnf(fmlas : list[Formula]) -> list:
-    # NOTE: iterating through f first triggers clausification
-    return [c for f in fmlas for c in f]
-
-def _clause_of_pseudo_atom(a: Formula) -> list:
-    """a must be of the form Neg(Atom(...)); returns the clause corresponding to a"""
-    a.clausify()
-    return a.clauses[0]
+from .utils import to_cnf, clause_of_pseudo_atom
 
 def _intersection_constraints(fbas : FBAS):
 
@@ -35,7 +27,7 @@ def _intersection_constraints(fbas : FBAS):
         constraints += [Or(*[in_quorum(q,v) for v in fbas.validators()])]
         # each member must have a slice in the quorum:
         def qset_satisfied(qs : QSet):
-            return Or(*[And(*[in_quorum(q,x) for x in s]) for s in qs.slices()])
+            return Or(*[And(*[in_quorum(q,x) for x in s]) for s in qs.level_1_slices()])
         constraints += [Implies(in_quorum(q,v), in_quorum(q, fbas.qset_map[v]))
                         for v in fbas.validators()]
         constraints += [Implies(in_quorum(q, qs), qset_satisfied(qs))
@@ -44,7 +36,7 @@ def _intersection_constraints(fbas : FBAS):
     for v in fbas.validators():
         constraints += [Neg(And(in_quorum('A', v), in_quorum('B', v)))]
     # convert to CNF and return:
-    return _to_cnf(constraints)
+    return to_cnf(constraints)
 
 # TODO: rename to get_tagged_validators?
 def _get_quorum_from_formulas(fmlas, q):
@@ -89,7 +81,7 @@ def _min_splitting_set_constraints(fbas : FBAS, group_by = None) -> WCNF:
         constraints += [Or(*[And(in_quorum(q,v), Neg(malicious(v))) for v in fbas.validators()])]
         # each member must have a slice in the quorum, unless it's faulty:
         def qset_constraint(qs : QSet):
-            return Implies(in_quorum(q, qs), Or(*[And(*[in_quorum(q, x) for x in s]) for s in qs.slices()]))
+            return Implies(in_quorum(q, qs), Or(*[And(*[in_quorum(q, x) for x in s]) for s in qs.level_1_slices()]))
         constraints += [qset_constraint(qs) for qs in fbas.all_qsets()]
         constraints += [Implies(And(in_quorum(q, v), Neg(malicious(v))), in_quorum(q, fbas.qset_map[v]))
                         for v in fbas.validators()]
@@ -106,17 +98,17 @@ def _min_splitting_set_constraints(fbas : FBAS, group_by = None) -> WCNF:
             constraints += [Implies(Or(*[malicious(v) for v in group_members(g)]), malicious(g))]
     # convert to weighted CNF, which allows us to add soft constraints to be maximized:
     wcnf = WCNF()
-    wcnf.extend(_to_cnf(constraints))
+    wcnf.extend(to_cnf(constraints))
     if group_by is None:
         # add soft constraints for minimizing the number of malicious nodes (i.e. maximizing the number of non-malicious nodes):
         for v in fbas.validators():
             nm = Neg(malicious(v))
-            wcnf.append(_clause_of_pseudo_atom(nm), weight=1)
+            wcnf.append(clause_of_pseudo_atom(nm), weight=1)
     else:
         # add soft constraints for minimizing the number of malicious groups:
         for g in groups:
             nm = Neg(malicious(g))
-            wcnf.append(_clause_of_pseudo_atom(nm), weight=1)
+            wcnf.append(clause_of_pseudo_atom(nm), weight=1)
     return wcnf
 
 def min_splitting_set(fbas, solver_class=LSU, group_by=None):  # LSU seems to perform the best
@@ -159,7 +151,6 @@ def min_splitting_set(fbas, solver_class=LSU, group_by=None):  # LSU seems to pe
     
 def _min_blocking_set_mus_constraints(fbas : FBAS) -> WCNF:
     """
-    
     Assert that there is a quorum of non-failed validators, and for each validator add a soft clause asserting that it failed. Then ask for an MUS of minimal size.
     """
     constraints : list[Formula] = []
@@ -173,15 +164,15 @@ def _min_blocking_set_mus_constraints(fbas : FBAS) -> WCNF:
     constraints += [Or(*[in_quorum(v) for v in fbas.validators()])]
     # each member must have a slice in the quorum, unless it's failed:
     def qset_constraint(qs : QSet):
-        return Implies(in_quorum(qs), Or(*[And(*[in_quorum(x) for x in s]) for s in qs.slices()]))
+        return Implies(in_quorum(qs), Or(*[And(*[in_quorum(x) for x in s]) for s in qs.level_1_slices()]))
     constraints += [qset_constraint(qs) for qs in fbas.all_qsets()]
     constraints += [Implies(in_quorum(v), in_quorum(fbas.qset_map[v]))
                         for v in fbas.validators()]
     wcnf = WCNF()
-    wcnf.extend(_to_cnf(constraints))
+    wcnf.extend(to_cnf(constraints))
     for v in fbas.validators():
         f = failed(v)
-        wcnf.append(_clause_of_pseudo_atom(f), weight=1)
+        wcnf.append(clause_of_pseudo_atom(f), weight=1)
     return wcnf
         
 def min_blocking_set_mus(fbas):
@@ -226,16 +217,16 @@ def _min_blocking_set_constraints(fbas : FBAS) -> WCNF:
         And(edge(fbas.qset_map[v],v), in_closure(fbas.qset_map[v]))) for v in fbas.validators()]
     # a qset is in the closure if and only if it's blocked by members of the closure that are predecessors in the graph:
     def qset_in_closure(qs: QSet):
-        return Or(*[And(*[And(in_closure(x), edge(x,qs)) for x in s]) for s in qs.v_blocking_sets()])
+        return Or(*[And(*[And(in_closure(x), edge(x,qs)) for x in s]) for s in qs.level_1_v_blocking_sets()])
     constraints += [Equals(qset_in_closure(qs), in_closure(qs)) for qs in fbas.all_qsets()]
     # the closure contains all validators and qsets::
     constraints += [in_closure(x) for x in fbas.validators() | fbas.all_qsets()]
     # finally, we want to maximize the number of non-failed validators:
     wcnf = WCNF()
-    wcnf.extend(_to_cnf(constraints))
+    wcnf.extend(to_cnf(constraints))
     for v in fbas.validators():
         f = Neg(failed(v))
-        wcnf.append(_clause_of_pseudo_atom(f), weight=1)
+        wcnf.append(clause_of_pseudo_atom(f), weight=1)
     return wcnf
 
 def min_blocking_set(fbas, solver_class=LSU):  # LSU seems to perform the best
@@ -250,49 +241,5 @@ def min_blocking_set(fbas, solver_class=LSU):  # LSU seems to perform the best
         failed_nodes = [a.object[1] for a in fmlas if isinstance(a, Atom) and a.object[0] == 'failed']
         print("Failed nodes:", failed_nodes)
         return failed_nodes
-    else:
-        return frozenset()
-
-def _optimal_overlay_constraints(fbas : FBAS):
-    # TODO: try to minimize max degree with an ILP
-    # TODO: this is costly; do it only on the org hypergraph
-    constraints : list[Formula] = []
-    def edge(x, y) -> Formula:
-        return Atom((x, y))
-    # symmetric graph:
-    constraints += [Implies(edge(x,y), edge(y,x)) for x in fbas.validators() for y in fbas.validators()]
-    # no self edges:
-    constraints += [Neg(edge(x,x)) for x in fbas.validators()]
-    # diameter is at most 2:
-    constraints += [Or(*[And(edge(x,z), edge(z,y)) for z in fbas.validators()]) for x in fbas.validators() for y in fbas.validators()]
-    # each validator has at least one neighbor in each of its slices:
-    # TODO: we need real slices, not stuff that has blocking sets in it. Or maybe we can eliminate them later.
-    constraints += [Or(*[And(*[edge(v, neighbor) for neighbor in blocking]) for blocking in fbas.qset_map[v].v_blocking_sets()])
-        for v in fbas.validators()]
-    # minimize the number of edges:
-    wcnf = WCNF()
-    wcnf.extend(_to_cnf(constraints))
-    for v1 in fbas.validators():
-        for v2 in fbas.validators() - {v1}:
-            f = Neg(edge(v1,v2))
-            wcnf.append(_clause_of_pseudo_atom(f), weight=1)
-    return wcnf
-
-def optimal_overlay(fbas, solver_class=LSU):  # LSU seems to perform the best
-    wncf = _optimal_overlay_constraints(fbas)
-    print("computed constraints")
-    maxSAT_solver = solver_class(wncf)
-    got_model = (
-        maxSAT_solver.compute() if 'compute' in solver_class.__dict__ else maxSAT_solver.solve()
-    )
-    if got_model:
-        print(f'Found minimal overlay of cost {maxSAT_solver.cost}')
-        model = maxSAT_solver.model
-        fmlas = [f for f in Formula.formulas(model, atoms_only=True)]
-        edges = [a.object for a in fmlas if isinstance(a, Atom)]
-        # remove symmetric edges:
-        edges = [edge for edge in edges if edge[0] < edge[1]]
-        print("edges:", edges)
-        return frozenset(edges)
     else:
         return frozenset()

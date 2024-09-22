@@ -1,4 +1,3 @@
-import pytest
 from python_fbas.fbas import QSet, FBAS, qset_intersection_bound
 from tests.test_utils import get_validators_from_test_data_file
 
@@ -20,6 +19,18 @@ def test_sat_2():
     assert q2.sat(['a',32,33])
     assert not q2.sat(['a'])
     assert not q2.sat(['a',12,21,33])
+
+def test_slices():
+    assert q1.slices() == {frozenset({1,2,3}),frozenset({2,3,4}),frozenset({3,4,1}),frozenset({4,1,2})}
+    assert frozenset({11,12,21,22}) in q2.slices()
+    assert frozenset({11,13,23,22}) in q2.slices()
+    assert frozenset({11,13,33,32}) in q2.slices()
+    assert frozenset({'a',33,32}) in q2.slices()
+
+def test_level_1_v_blocking_sets():
+    assert q1.blocking_sets() == {frozenset({1,2}),frozenset({2,3}),frozenset({3,4}),frozenset({4,1}),frozenset({1,3}),frozenset({2,4})}
+    assert frozenset(({'a',11,12,21,22})) in q2.blocking_sets()
+    assert frozenset(({11,13,23,22,31,33})) in q2.blocking_sets()
 
 def test_3():
     assert q1.all_validators() == frozenset({1,2,3,4})

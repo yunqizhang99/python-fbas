@@ -2,7 +2,8 @@ import json
 import argparse
 import importlib
 import logging
-from python_fbas.sat_based_fbas_analysis import check_intersection, min_splitting_set, min_blocking_set, optimal_overlay
+from python_fbas.sat_based_fbas_analysis import check_intersection, min_splitting_set, min_blocking_set
+from python_fbas.overlay import optimal_overlay, constellation_graph
 from python_fbas.fbas import FBAS
 
 # TODO: add fast mode
@@ -45,6 +46,9 @@ def main():
 
     # Command for optimal overlay
     parser_overlay = subparsers.add_parser('optimal-overlay', help="Find optimal overlay")
+
+    # Command for constellation graph
+    parser_constellation = subparsers.add_parser('constellation-overlay', help="Compute constellation overlay")
 
     def _load_fbas_from_stellarbeat():
         mod = importlib.import_module('python_fbas.stellarbeat_data')
@@ -91,6 +95,11 @@ def main():
         fbas = _load_fbas()
         result = optimal_overlay(fbas)
         print(f"Optimal overlay: {result}")
+
+    elif args.command == 'constellation-overlay':
+        fbas = _load_fbas()
+        result = constellation_graph(fbas)
+        print(f"Constellation overlay: {result}")
 
     else:
         parser.print_help()
