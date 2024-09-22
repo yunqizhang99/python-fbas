@@ -1,5 +1,5 @@
 from python_fbas.fbas import QSet, FBAS, qset_intersection_bound
-from tests.test_utils import get_validators_from_test_data_file
+from test_utils import get_validators_from_test_data_file
 
 q1 = QSet.make(3, [1,2,3,4],[])
 o1 = QSet.make(2, [11,12,13],[])

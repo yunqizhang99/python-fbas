@@ -14,11 +14,15 @@ Install requirements:
 pip install -r requirements.txt
 ```
 
+Run the tests:
+```
+python3 -m pytest
+```
+
 Run:
 ```
 python3 main.py
 ```
-
 
 ## Compute a Constellation overlay
 

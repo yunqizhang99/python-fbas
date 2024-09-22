@@ -1,6 +1,6 @@
 from python_fbas.sat_based_fbas_analysis import check_intersection, min_splitting_set, min_blocking_set, min_blocking_set_mus
 from python_fbas.fbas import QSet, FBAS
-from tests.test_utils import get_validators_from_test_data_file
+from test_utils import get_validators_from_test_data_file
 
 q1 = QSet.make(3, [1,2,3,4],[])
 fbas1 = FBAS({1 : q1, 2 : q1, 3 : q1, 4 : q1})
