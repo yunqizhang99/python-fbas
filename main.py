@@ -5,6 +5,7 @@ import logging
 from python_fbas.sat_based_fbas_analysis import check_intersection, min_splitting_set, min_blocking_set
 from python_fbas.overlay import optimal_overlay, constellation_graph
 from python_fbas.fbas import FBAS
+from python_fbas.fbas_generator import gen_symmetric_fbas
 
 # TODO: add fast mode
 
@@ -49,6 +50,16 @@ def main():
 
     # Command for constellation graph
     parser_constellation = subparsers.add_parser('constellation-overlay', help="Compute constellation overlay")
+    # Add encoding option:
+    parser_constellation.add_argument('--card-encoding', default="6", help="Specify the cardinality encoding to use (0 to 9; see the pysat documentation)")
+
+    # Command to generate a symmetric fbas
+    parser_symmetric = subparsers.add_parser('gen-symmetric-fbas', help="Generate a symmetric FBAS")
+    # Add number of validators option:
+    parser_symmetric.add_argument('n', type=int, help="Number of validators")
+    # Add file output option:
+    parser_symmetric.add_argument('--output', help="Output file")
+
 
     def _load_fbas_from_stellarbeat():
         mod = importlib.import_module('python_fbas.stellarbeat_data')
@@ -98,8 +109,13 @@ def main():
 
     elif args.command == 'constellation-overlay':
         fbas = _load_fbas()
-        result = constellation_graph(fbas)
+        # parse card encoding as integer:
+        args.card_encoding = int(args.card_encoding)
+        result = constellation_graph(fbas, card_encoding=args.card_encoding)
         print(f"Constellation overlay: {result}")
+
+    elif args.command == 'gen-symmetric-fbas':
+        gen_symmetric_fbas(args.n, output=args.output)
 
     else:
         parser.print_help()

@@ -55,6 +55,13 @@ class QSet:
                 return QSet.make(t, vs, inner_qsets)
             case _: raise ValueError(f"Invalid QSet JSON: {data}")
 
+    def to_json(self):
+        return {
+            'threshold': self.threshold,
+            'validators': list(self.validators),
+            'innerQuorumSets': [iqs.to_json() for iqs in self.inner_qsets]
+        }
+
     def elements(self):
         return self.validators | self.inner_qsets
 
@@ -223,6 +230,13 @@ class FBAS:
             for v in data
         }
         return FBAS(qsm, meta)
+    
+    def to_json(self):
+        return [dict(
+            publicKey=k,
+            quorumSet=v.to_json(),
+            **self.metadata.get(k, {})
+        ) for k, v in self.qset_map.items()]
 
     def is_org_structured(self) -> bool:
         """
