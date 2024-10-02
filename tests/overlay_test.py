@@ -28,6 +28,5 @@ def test_is_in_min_quorum_of_2():
     q1 = QSet.make(1, [2],[])
     q2 = QSet.make(1, [2],[])
     fbas = FBAS({1 : q1, 2 : q2})
-    # TODO: debug!
     assert is_in_min_quorum_of(fbas, 1, 2)
     assert not is_in_min_quorum_of(fbas, 2, 1)

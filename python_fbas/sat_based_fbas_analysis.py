@@ -249,10 +249,13 @@ def min_blocking_set(fbas, solver_class=LSU):  # LSU seems to perform the best
 def is_in_min_quorum_of(fbas, v1, v2, solver='cms'):
     """
     Checks whether v1 is in a minimal quorum of v2 by checking the satisfiability of a quantified boolean formula.
-    TODO: the main problem is how to transform a non-CNF QBF to CNF QBF
+    We assert that A is a quorum containing v1 and v2, and that for all quorums B containing v1, B is not a subset of A.
+
+    One tricky part is that this has to be converted to a PCNF formula. We can do this using the Tseitin transformation but we need to make sure that we existentially quantify the new variables in the scope of the originally universally quantified variables. This formula should look like this: exists orginal_exists_vars. forall original_forall_vars. exists new_vars : CNF_formula
     """
     if v1 == v2:
         return True
+    
     # collapsed_fbas = fbas.collapse_qsets()
     A_constraints : list[Formula] = []
     B_constraints : list[Formula] = []
