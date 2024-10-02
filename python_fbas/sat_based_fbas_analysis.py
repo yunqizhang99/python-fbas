@@ -4,9 +4,11 @@ from pysat.card import *
 from pysat.formula import *
 from pysat.examples.lsu import LSU
 from pysat.examples.optux import OptUx
+from pyqbf.formula import PCNF
+from pyqbf.solvers import Solver as QSolver
 
 from .fbas import QSet, FBAS
-from .utils import to_cnf, clause_of_pseudo_atom
+from .utils import to_cnf, clause_of_pseudo_atom, vars_of_cnf
 
 def _intersection_constraints(fbas : FBAS):
 
@@ -26,10 +28,10 @@ def _intersection_constraints(fbas : FBAS):
         # q is not empty:
         constraints += [Or(*[in_quorum(q,v) for v in fbas.validators()])]
         # each member must have a slice in the quorum:
-        def qset_satisfied(qs : QSet):
-            return Or(*[And(*[in_quorum(q,x) for x in s]) for s in qs.level_1_slices()])
         constraints += [Implies(in_quorum(q,v), in_quorum(q, fbas.qset_map[v]))
                         for v in fbas.validators()]
+        def qset_satisfied(qs : QSet):
+            return Or(*[And(*[in_quorum(q,x) for x in s]) for s in qs.level_1_slices()])
         constraints += [Implies(in_quorum(q, qs), qset_satisfied(qs))
                         for qs in fbas.all_qsets()]
     # no validator can be in both quorums:
@@ -39,7 +41,7 @@ def _intersection_constraints(fbas : FBAS):
     return to_cnf(constraints)
 
 # TODO: rename to get_tagged_validators?
-def _get_quorum_from_formulas(fmlas, q):
+def _get_quorum_from_atoms(fmlas, q):
     return [a.object[1] for a in fmlas
             if isinstance(a, Atom) and a.object[0] == q and not isinstance(a.object[1], QSet)]
     
@@ -53,8 +55,8 @@ def check_intersection(fbas : FBAS, solver='cms'):
         model = s.get_model()
         fmlas = [f for f in Formula.formulas(model, atoms_only=True)]
         print("Disjoint quorums:")
-        print("Quorum A:", _get_quorum_from_formulas(fmlas, 'A'))
-        print("Quorum B:", _get_quorum_from_formulas(fmlas, 'B'))
+        print("Quorum A:", _get_quorum_from_atoms(fmlas, 'A'))
+        print("Quorum B:", _get_quorum_from_atoms(fmlas, 'B'))
     return not res
 
 def _min_splitting_set_constraints(fbas : FBAS, group_by = None) -> WCNF:
@@ -128,8 +130,8 @@ def min_splitting_set(fbas, solver_class=LSU, group_by=None):  # LSU seems to pe
             ]
             print("Minimal splitting set:", malicious_groups)
             logging.info("Disjoint quorums:")
-            logging.info("Quorum A: %s", _get_quorum_from_formulas(fmlas, 'A'))
-            logging.info("Quorum B: %s", _get_quorum_from_formulas(fmlas, 'B'))
+            logging.info("Quorum A: %s", _get_quorum_from_atoms(fmlas, 'A'))
+            logging.info("Quorum B: %s", _get_quorum_from_atoms(fmlas, 'B'))
             malicious_nodes = [
                 a.object[1] for a in fmlas
                     if isinstance(a, Atom) and a.object[0] == 'malicious'
@@ -142,8 +144,8 @@ def min_splitting_set(fbas, solver_class=LSU, group_by=None):  # LSU seems to pe
             malicious_nodes = [a.object[1] for a in fmlas if isinstance(a, Atom) and a.object[0] == 'malicious']
             print("Minimal splitting set:", malicious_nodes)
             print("Quorums that intersect only in the splitting set:")
-            print("Quorum A:", _get_quorum_from_formulas(fmlas, 'A'))
-            print("Quorum B:", _get_quorum_from_formulas(fmlas, 'B'))
+            print("Quorum A:", _get_quorum_from_atoms(fmlas, 'A'))
+            print("Quorum B:", _get_quorum_from_atoms(fmlas, 'B'))
             return malicious_nodes
     else:
         print("No splitting set found")
@@ -243,3 +245,58 @@ def min_blocking_set(fbas, solver_class=LSU):  # LSU seems to perform the best
         return failed_nodes
     else:
         return frozenset()
+    
+def is_in_min_quorum_of(fbas, v1, v2, solver='cms'):
+    """
+    Checks whether v1 is in a minimal quorum of v2 by checking the satisfiability of a quantified boolean formula.
+    TODO: the main problem is how to transform a non-CNF QBF to CNF QBF
+    """
+    if v1 == v2:
+        return True
+    # collapsed_fbas = fbas.collapse_qsets()
+    A_constraints : list[Formula] = []
+    B_constraints : list[Formula] = []
+    def in_quorum(q, x):
+        return Atom((q, x))
+    def qset_satisfied(q : str, qs : QSet):
+        return Or(*[And(*[in_quorum(q,x) for x in s]) for s in qs.level_1_slices()])
+    
+    A_constraints += [Implies(in_quorum('A',v), in_quorum('A', fbas.qset_map[v]))
+                    for v in fbas.validators()]
+    A_constraints += [Implies(in_quorum('A', qs), qset_satisfied('A', qs))
+                    for qs in fbas.all_qsets()]
+    A_constraints += [in_quorum('A', v1), in_quorum('A', v2)]
+
+    B_constraints += [Implies(in_quorum('B',v), in_quorum('B', fbas.qset_map[v]))
+                    for v in fbas.validators()]
+    B_constraints += [Implies(in_quorum('B', qs), qset_satisfied('B', qs))
+                    for qs in fbas.all_qsets()]
+    B_constraints += [in_quorum('B', v1)]
+    B_constraints += [Neg(And(in_quorum('B', v), Neg(in_quorum('A', v)))) for v in fbas.validators()]
+    B_constraints += [Or(*[And(in_quorum('A',v), Neg(in_quorum('B',v))) for v in fbas.validators()])]
+
+    A_clauses = to_cnf(A_constraints)
+    B_clauses = to_cnf([Neg(And(*B_constraints))])
+    A_lits : set[int] = vars_of_cnf(A_clauses)
+    B_atoms = (
+        [Atom(('B',v)) for v in fbas.validators()] +
+            [Atom(('B',qs)) for qs in fbas.all_qsets()] )
+    for b in B_atoms:
+        b.clausify()
+    B_atoms_lits = [b.clauses[0][0] for b in B_atoms]
+    B_tseitin_lits : set[int] = vars_of_cnf(B_clauses) - A_lits - set(B_atoms_lits)
+
+    pcnf = PCNF(from_clauses=A_clauses + B_clauses)
+    pcnf.exists(*list(A_lits)).forall(*B_atoms_lits).exists(*list(B_tseitin_lits))
+
+    # solvers: 'depqbf', 'qute', 'rareqs', 'qfun', 'caqe'
+    s = QSolver(name='depqbf', bootstrap_with=pcnf)
+    res = s.solve()
+    if res:
+        logging.info("%s is in a minimal quorum of %s", v2, v1)
+        model = s.get_model()
+        fmlas = [f for f in Formula.formulas(model, atoms_only=True)]
+        logging.info("Minimal quorum: %s", _get_quorum_from_atoms(fmlas, 'A'))
+    else:
+        logging.info("%s is not in a minimal quorum of %s", v2, v1)
+    return res

@@ -1,15 +1,18 @@
 import logging
 from pysat.formula import *
 from pysat.examples.lsu import LSU
+from pysat.card import *
 from typing import Optional
 
 from .fbas import QSet, FBAS
 from .utils import to_cnf, clause_of_pseudo_atom
 
 def _constellation_groups(fbas : FBAS) -> list[int]:
-    return list(range(len(fbas.meta_field_values('homeDomain'))))
+    upper = int(len(fbas.meta_field_values('homeDomain'))/3)+2
+    logging.info(f"Using max {upper} groups")
+    return list(range(upper))
 
-def _constellation_constraints(fbas : FBAS):
+def _constellation_constraints(fbas : FBAS, card_encoding=EncType.pairwise):
     # first make sure that all validators have a homeDomain:
     if not fbas.all_have_meta_field('homeDomain'):
         raise ValueError("Some validators do not have a homeDomain")
@@ -24,24 +27,25 @@ def _constellation_constraints(fbas : FBAS):
         if list(qsets.values()).pop().validators:
             raise ValueError(f"QSet of org {org} is not of the right form")
 
+    wcnf = WCNF()
     constraints : list[Formula] = []
     # create groups 1 to n where n is the number of distinct homeDomains:
     groups = _constellation_groups(fbas)
-    # every org is in exactly one group:
     def in_group(g, o):
-        return And(Atom(('in-group', g, o)), Neg(Or(*[Atom(('in-group', g2, o)) for g2 in set(groups) - {g}])))
-    constraints += [Or(*[in_group(g, o) for g in groups]) for o in orgs]
+        # return And(Atom(('in-group', g, o)), Neg(Or(*[Atom(('in-group', g2, o)) for g2 in set(groups) - {g}])))
+        return Atom(('in-group', g, o))
     # each group is a clique:
     constraints += [
         Implies(And(in_group(g, o1), in_group(g, o2)), Atom(('edge', o1, o2)))
             for g in groups for o1 in orgs for o2 in orgs
             if o1 != o2
     ]
-    # each org has an edge to each other non-empty group: 
+
+    # each org has at least one edge to each other non-empty group: 
     constraints += [
         Implies(
             And(in_group(g1, o1), Or(*[in_group(g2, o2) for o2 in orgs])),
-            Or(*[And(in_group(g2, o2), Atom(('edge', o1, o2))) for o2 in orgs])
+            Or(*[And(in_group(g2, o2), Atom(('edge', o1, o2))) for o2 in orgs if o2 != o1])
         )
         for g1 in groups for g2 in groups if g1 != g2 for o1 in orgs
     ]
@@ -53,17 +57,27 @@ def _constellation_constraints(fbas : FBAS):
     constraints += [
         Or(*[connected_to_all_in(o, b) for b in qset_of_org(o).blocking_sets()]) for o in orgs
     ]
-    # now minimize the number of edges:
-    wcnf = WCNF()
     wcnf.extend(to_cnf(constraints))
+
+    # each org is in exactly one group:
+    wcnf.extend(to_cnf([Or(*[in_group(g, o) for g in groups]) for o in orgs]))
+    vpool = Formula.export_vpool()
+    for o in orgs:
+        atoms = [in_group(g, o) for g in groups]
+        for a in atoms:
+            a.clausify()
+        lits = [a.clauses[0][0] for a in atoms]
+        wcnf.extend(CardEnc.atmost(lits=lits, vpool=vpool, encoding=card_encoding).clauses) 
+        # NOTE: specifying the vpool is crucial, otherwise the encoding will not make any sense
+
     for o1 in orgs:
         for o2 in orgs - {o1}:
             f = Neg(Atom(('edge', o1, o2)))
             wcnf.append(clause_of_pseudo_atom(f), weight=1)
     return wcnf
 
-def constellation_graph(fbas, solver_class=LSU) -> Optional[dict]:
-    wcnf = _constellation_constraints(fbas)
+def constellation_graph(fbas, solver_class=LSU, card_encoding=EncType.pairwise) -> Optional[dict]:
+    wcnf = _constellation_constraints(fbas, card_encoding)
     maxSAT_solver = solver_class(wcnf)
     got_model = (
         maxSAT_solver.compute() if 'compute' in solver_class.__dict__ else maxSAT_solver.solve()
