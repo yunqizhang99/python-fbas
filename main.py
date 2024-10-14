@@ -8,6 +8,7 @@ from python_fbas.fbas import FBAS
 from python_fbas.fbas_generator import gen_symmetric_fbas
 
 # TODO: add fast mode
+# TODO: a --viewpoint (everything is subjective in a FBAS!)
 
 def load_fbas_from_file(validators_file):
     with open(validators_file, 'r', encoding='utf-8') as f:
