@@ -4,13 +4,13 @@ Usage:
   script.py --find-parameter (--n_orgs=<n_orgs> | --fbas=<fbas>)
 """
 
-import logging
-from python_fbas.fbas_generator import gen_symmetric_fbas
-import networkx as nx
-from python_fbas.fbas import QSet, FBAS
-from docopt import docopt
 import json
 import os
+import logging
+import networkx as nx
+from docopt import docopt
+from python_fbas.fbas_generator import gen_symmetric_fbas
+from python_fbas.fbas import QSet, FBAS
 
 args = docopt(__doc__)
 

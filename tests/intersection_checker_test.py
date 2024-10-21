@@ -1,5 +1,6 @@
-from python_fbas.sat_based_fbas_analysis import check_intersection, min_splitting_set, min_blocking_set, min_blocking_set_mus
+from python_fbas.sat_based_fbas_analysis import check_intersection, min_splitting_set, min_blocking_set, min_blocking_set_mus, is_in_min_quorum_of
 from python_fbas.fbas import QSet, FBAS
+from python_fbas.fbas_generator import gen_symmetric_fbas
 from test_utils import get_validators_from_test_data_file
 
 q1 = QSet.make(3, [1,2,3,4],[])
@@ -35,3 +36,16 @@ def test_min_blocking_set_mus():
 def test_group_by_1():
     fbas = FBAS.from_json(get_validators_from_test_data_file('homedomain_test_1.json'))
     assert min_splitting_set(fbas, group_by='homeDomain') == ["domain-2"]
+
+def test_is_in_min_quorum_of_1():
+    fbas = gen_symmetric_fbas(3)
+    for v1 in fbas.validators():
+        for v2 in fbas.validators():
+            assert is_in_min_quorum_of(fbas, v1, v2)
+
+def test_is_in_min_quorum_of_2():
+    q1 = QSet.make(1, [2],[])
+    q2 = QSet.make(1, [2],[])
+    fbas = FBAS({1 : q1, 2 : q2})
+    assert is_in_min_quorum_of(fbas, 1, 2)
+    assert not is_in_min_quorum_of(fbas, 2, 1)
