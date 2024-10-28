@@ -32,11 +32,7 @@ def main():
 
     # Command for updating the data from Stellarbeat
     parser_stellarbeat = subparsers.add_parser('update-stellarbeat-cache', help="Update data downloaded from stellarbeat.io")
-
-    # Command for loading validators from Stellarbeat
-    parser_stellarbeat = subparsers.add_parser('load-stellarbeat', help="Load validators from Stellarbeat")
-    parser_stellarbeat.add_argument('--update', action='store_true', help="Update validators data")
-
+    
     # Command for checking intersection
     parser_check = subparsers.add_parser('check-intersection', help="Check intersection of quorums")
 
