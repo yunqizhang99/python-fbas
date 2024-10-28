@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import logging
 from pprint import pformat
 from itertools import combinations, product
-from typing import Any, Optional
+from typing import Any, Optional, Literal
 import networkx as nx
 from .utils import fixpoint
 
@@ -331,14 +331,40 @@ class FBAS:
         max_scc_qsets = {self.qset_map[v] for v in self.max_scc()}
         return min(qset_intersection_bound(q1, q2) for q1 in max_scc_qsets for q2 in max_scc_qsets)
 
-    def intersection_check_heuristic(self):
+    def fast_intersection_check(self, point_of_view) -> Literal['true', 'unknown']:
         """
-        Compute a maximal directly-intertwined set (i.e. max clique) in the max scc, then check its closure is the whole fbas.
-        If not, repeat with another maximal clique.
-        Do that a number of times.
-        Also fail immediately if the undirected version of the graph is not connected.
+        This is a fast but heuristic method to check whether the quorum intersection property holds. It may return 'unknown' even if the property holds.
         """
-        pass
+        # first, compute what's reachable from our point of view:
+        g = self.to_graph()
+        reachable = nx.descendants(g, point_of_view) | {point_of_view}
+        logging.info("There are %s reachable validators", len(reachable))
+        # compute the maximal sccs in the subgraph induced by reachable
+        sccs = nx.strongly_connected_components(g.subgraph(reachable))
+        # for each scc, check whether it contains an intertwined set whose closure covers all reachable validators.
+        # check e.g. 10 sccs:
+        for _ in range(10):
+            try:
+                scc = next(sccs)
+                # create an undirected graph over scc where there is an edge between v1 and v2 if and only if their QSets have a non-zero intersection bound:
+                intertwined = nx.Graph()
+                for v1, v2 in combinations(scc, 2):
+                    if v1 != v2 and qset_intersection_bound(self.qset_map[v1], self.qset_map[v2]) > 0:
+                        intertwined.add_edge(v1, v2)
+                # compute the maximal cliques in the intertwined graph:
+                cliques = nx.find_cliques(intertwined)
+                # if the closure of one of those cliques is the whole set of reachable validators, we know that intersection holds.
+                # check e.g. 10 cliques:
+                for _ in range(10):
+                    try:
+                        clique = next(cliques)
+                        if self.closure(clique) == self.validators():
+                            return 'true'
+                    except StopIteration:
+                        break
+            except StopIteration:
+                break
+        return 'unknown'
 
     def splitting_set_bound_heuristic(self):
         pass
@@ -425,4 +451,3 @@ class FBAS:
                 'innerQuorumSets': [as_dict(iqs) for iqs in qset.inner_qsets]
             }
         return pformat(as_dict(qset), indent=2)
-

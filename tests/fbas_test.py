@@ -113,3 +113,16 @@ def test_collapse_qsets():
     stellar = FBAS.from_json(get_validators_from_test_data_file('validators.json'))
     collapsed_stellar = stellar.collapse_qsets(new_name=stellar.org_of_qset)
     assert 'www.stellar.org' in collapsed_stellar.qset_map.keys()
+
+def test_fast_intersection():
+    fbas = FBAS.from_json(get_validators_from_test_data_file('top_tier.json'))
+    sdf2 = "GCM6QMP3DLRPTAZW2UZPCPX2LF3SXWXKPMP3GKFZBDSF3QZGV2G5QSTK"
+    assert sdf2 in fbas.qset_map.keys()
+    assert fbas.fast_intersection_check(sdf2) == 'true'
+
+    fbas2 = FBAS.from_json(get_validators_from_test_data_file('validators.json'))
+    astro1 = "GDMAU3NHV4H7NZF5PY6O6SULIUKIIHPRYOKM7HMREK4BW65VHMDKNM6M"
+    # this validator seems to reach GDXQB3OMMQ6MGG43PWFBZWBFKBBDUZIVSUDAZZTRAWQZKES2CDSE5HKJ, which seems to be an old LOBSTR validator
+    # TODO: check what's up with this
+    assert astro1 in fbas2.qset_map.keys()
+    assert fbas2.fast_intersection_check(astro1) == 'unknown'
