@@ -9,6 +9,7 @@ from itertools import combinations, product, islice
 from typing import Any, Optional, Literal
 import networkx as nx
 from .utils import fixpoint
+from functools import lru_cache
 
 
 @dataclass(frozen=True)
@@ -111,6 +112,7 @@ class QSet:
 
         def _blocked(xs):
             return xs | {qs for qs in self.all_qsets() - xs if directly_blocked(qs, xs)}
+        
         return self in fixpoint(_blocked, frozenset(validators))
 
     def all_validators(self):
@@ -149,6 +151,7 @@ def qset_intersection_bound(qset1, qset2):
     # We could make it more precise by tracking the size of org intersections (e.g. the minimal intersection is 2 for a 3/4 org)
     return max((m1 + m2) - nc, 0)
 
+@lru_cache(maxsize=None)
 def qset_intersect(q1: QSet, q2: QSet) -> bool:
     """
     Brute-force check; may be slow.

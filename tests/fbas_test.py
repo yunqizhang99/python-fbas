@@ -1,5 +1,6 @@
 from python_fbas.fbas import QSet, FBAS, qset_intersection_bound
 from test_utils import get_validators_from_test_data_file
+from python_fbas.sat_based_fbas_analysis import check_intersection
 
 q1 = QSet.make(3, [1,2,3,4],[])
 o1 = QSet.make(2, [11,12,13],[])
@@ -114,12 +115,13 @@ def test_collapse_qsets():
     collapsed_stellar = stellar.collapse_qsets(new_name=stellar.org_of_qset)
     assert 'www.stellar.org' in collapsed_stellar.qset_map.keys()
 
-def test_fast_intersection():
+def test_fast_intersection_1():
     fbas = FBAS.from_json(get_validators_from_test_data_file('top_tier.json'))
     sdf2 = "GCM6QMP3DLRPTAZW2UZPCPX2LF3SXWXKPMP3GKFZBDSF3QZGV2G5QSTK"
     assert sdf2 in fbas.qset_map.keys()
     assert fbas.fast_intersection_check(sdf2) == 'true'
 
+def test_fast_intersection_2():
     fbas2 = FBAS.from_json(get_validators_from_test_data_file('validators.json'))
     astro1 = "GDMAU3NHV4H7NZF5PY6O6SULIUKIIHPRYOKM7HMREK4BW65VHMDKNM6M"
     assert astro1 in fbas2.qset_map.keys()
@@ -129,7 +131,18 @@ def test_fast_intersection():
     assert old_lobster_validator in fbas2.qset_map.keys()
     assert fbas2.fast_intersection_check(old_lobster_validator) == 'true'
 
+def test_fast_intersection_3():
     q3 = QSet.make(2, [1,2,3,4],[])
     fbas3 = FBAS({1 : q3, 2 : q3, 3 : q3, 4 : q3})
     assert fbas3.fast_intersection_check(1) == 'unknown'
     assert fbas1.fast_intersection_check(1) == 'true'
+
+def test_fast_intersection_4():
+    conflicted_fbas = FBAS.from_json(get_validators_from_test_data_file('conflicted.json'))
+    v11 = 'PK11'
+    v23 = 'PK23'
+    vx = 'PKX'
+    assert conflicted_fbas.fast_intersection_check(v11) == 'true'
+    assert conflicted_fbas.fast_intersection_check(v23) == 'true'
+    assert conflicted_fbas.fast_intersection_check(vx) == 'unknown'
+    assert check_intersection(conflicted_fbas) is False
