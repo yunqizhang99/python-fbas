@@ -5,7 +5,7 @@ A module for representing and working with Federated Byzantine Agreement Systems
 from dataclasses import dataclass
 import logging
 from pprint import pformat
-from itertools import combinations, product
+from itertools import combinations, product, islice
 from typing import Any, Optional, Literal
 import networkx as nx
 from .utils import fixpoint
@@ -78,6 +78,9 @@ class QSet:
         return combinations(self.elements(), self.blocking_threshold())
     
     def slices(self) -> set[set] :
+        """
+        Returns the set of all slices of this QSet.
+        """
         def slices_of_level_1_slice(s):
             l = [e.slices() if isinstance(e, QSet) else frozenset([frozenset([e])]) for e in s]
             return {frozenset().union(*t) for t in product(*l)}
@@ -130,8 +133,8 @@ def qset_intersection_bound(qset1, qset2):
     organizations in common.
     """
     if qset1.depth() > 2 or qset2.depth() > 2:
-        raise ValueError(
-            "direct_safety_margin only works for qsets with at most 2 levels")
+        logging.warning("qsets have more than 2 levels; returning 0")
+        return 0
     #  in order to guarantee intersection, we require common inner-qsets to have a threshold of more than half:
     if any(2*qs.threshold < len(qs.elements()) for qs in qset1.inner_qsets | qset2.inner_qsets):
         return 0
@@ -146,6 +149,15 @@ def qset_intersection_bound(qset1, qset2):
     # We could make it more precise by tracking the size of org intersections (e.g. the minimal intersection is 2 for a 3/4 org)
     return max((m1 + m2) - nc, 0)
 
+def qset_intersect(q1: QSet, q2: QSet) -> bool:
+    """
+    Brute-force check; may be slow.
+    """
+    logging.info("Performing brute-force intersection-check of %s and %s", q1, q2)
+    ss1 = q1.slices()
+    ss2 = q2.slices()
+    # now check whether every pair of slices intersects:
+    return all(s1 & s2 for s1 in ss1 for s2 in ss2)
 
 @dataclass
 class FBAS:
@@ -342,32 +354,26 @@ class FBAS:
         logging.info("There are %s reachable validators", len(reachable))
 
         # next, compute the maximal sccs in the subgraph induced by the reachable validators
+        # TODO: prioritize those that are closer to v?
         sccs = nx.strongly_connected_components(g.subgraph(reachable))
         # for each scc, check whether it contains an intertwined set whose closure covers all reachable validators.
         # check e.g. 10 sccs:
-        for _ in range(10):
-            try:
-                scc = next(sccs)
-                # create an undirected graph over scc where there is an edge between v1 and v2 if and only if their QSets have a non-zero intersection bound:
-                intertwined = nx.Graph()
-                for v1, v2 in combinations(scc, 2):
-                    # TODO better qset-intersection check
-                    if v1 != v2 and qset_intersection_bound(self.qset_map[v1], self.qset_map[v2]) > 0:
-                        intertwined.add_edge(v1, v2)
-                # compute the maximal cliques in the intertwined graph:
-                cliques = nx.find_cliques(intertwined)
-                # if the closure of one of those cliques is the whole set of reachable validators, we know that intersection holds.
-                # check e.g. 10 cliques:
-                for _ in range(10):
-                    try:
-                        clique = next(cliques)
-                        # if the closure of the clique contains the reachable validators, we're done:
-                        if reachable <= self.closure(clique):
-                            return 'true'
-                    except StopIteration:
-                        break
-            except StopIteration:
-                break
+        for scc in islice(sccs, 10):
+            # create an undirected graph over scc where there is an edge between v1 and v2 if and only if their QSets have a non-zero intersection bound:
+            intertwined = nx.Graph()
+            for v1, v2 in combinations(scc, 2):
+                q1 = self.qset_map[v1]
+                q2 = self.qset_map[v2]
+                if v1 != v2 and (qset_intersection_bound(q1, q2) > 0 or qset_intersect(q1, q2)):
+                    intertwined.add_edge(v1, v2)
+            # compute the maximal cliques in the intertwined graph:
+            cliques = nx.find_cliques(intertwined)
+            # if the closure of one of those cliques is the whole set of reachable validators, we know that intersection holds.
+            # check e.g. 10 cliques:
+            for clique in islice(cliques, 10):
+                # if the closure of the clique contains the reachable validators, we're done:
+                if reachable <= self.closure(clique):
+                    return 'true'
         return 'unknown'
 
     def splitting_set_bound_heuristic(self):

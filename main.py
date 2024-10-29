@@ -48,18 +48,12 @@ def main():
     # Command for optimal overlay
     parser_overlay = subparsers.add_parser('optimal-overlay', help="Find optimal overlay")
 
-    # Command for constellation graph
-    parser_constellation = subparsers.add_parser('constellation-overlay', help="Compute constellation overlay")
-    # Add encoding option:
-    parser_constellation.add_argument('--card-encoding', default="6", help="Specify the cardinality encoding to use (0 to 9; see the pysat documentation)")
-
     # Command to generate a symmetric fbas
     parser_symmetric = subparsers.add_parser('gen-symmetric-fbas', help="Generate a symmetric FBAS")
     # Add number of validators option:
     parser_symmetric.add_argument('n', type=int, help="Number of validators")
     # Add file output option:
     parser_symmetric.add_argument('--output', help="Output file")
-
 
     def _load_fbas_from_stellarbeat():
         mod = importlib.import_module('python_fbas.stellarbeat_data')
