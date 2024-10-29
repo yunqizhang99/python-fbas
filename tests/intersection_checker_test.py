@@ -35,3 +35,8 @@ def test_min_blocking_set_mus():
 def test_group_by_1():
     fbas = FBAS.from_json(get_validators_from_test_data_file('homedomain_test_1.json'))
     assert min_splitting_set(fbas, group_by='homeDomain') == ["domain-2"]
+
+def test_empty_qset():
+    circular_fbas = FBAS.from_json(get_validators_from_test_data_file('circular_2.json'))
+    # TODO: fails when using collapse_qsets
+    assert check_intersection(circular_fbas)

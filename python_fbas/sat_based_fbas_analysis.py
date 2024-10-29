@@ -47,7 +47,9 @@ def _get_quorum_from_atoms(fmlas, q):
     
 def check_intersection(fbas : FBAS, solver='cms'):
     """Returns True if and only if all quorums intersect"""
-    collapsed_fbas = fbas.collapse_qsets()
+    # TODO debug collapse_qsets (see test_empty_qset)
+    # collapsed_fbas = fbas.collapse_qsets()
+    collapsed_fbas = fbas
     clauses = _intersection_constraints(collapsed_fbas)
     s = Solver(bootstrap_with=clauses, name=solver)
     res = s.solve()

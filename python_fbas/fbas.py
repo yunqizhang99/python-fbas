@@ -155,6 +155,7 @@ def qset_intersection_bound(qset1, qset2):
 def qset_intersect(q1: QSet, q2: QSet) -> bool:
     """
     Brute-force check; may be slow.
+    TODO: We could also follow the qset structures: check whether there is intersection at level 1, then, for each level-1 intersection, check that there is intersection at level 2, etc. That would probably be more efficient.
     """
     logging.info("Performing brute-force intersection-check of %s and %s", q1, q2)
     ss1 = q1.slices()
@@ -350,6 +351,8 @@ class FBAS:
         """
         This is a fast but heuristic method to check whether the set of validators reachable from v has quorum intersection.
         It may return 'unknown' even if the property holds; however it is sound: if it returns 'true', then the property holds.
+
+        Typical examples where quorum-intersection holds but the heuristic fails to see it are circular FBASs like in cicular_1.json and circular_2.json
         """
         # first, compute what's reachable from v:
         g = self.to_graph()

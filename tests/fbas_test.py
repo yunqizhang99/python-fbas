@@ -146,3 +146,18 @@ def test_fast_intersection_4():
     assert conflicted_fbas.fast_intersection_check(v23) == 'true'
     assert conflicted_fbas.fast_intersection_check(vx) == 'unknown'
     assert check_intersection(conflicted_fbas) is False
+
+
+def test_fast_intersection_5():
+    # This is an example wher the fbas is intertwined but the fast heuristic fails to see it
+    circular_fbas = FBAS.from_json(get_validators_from_test_data_file('circular_1.json'))
+    v1 = 'PK1'
+    assert circular_fbas.fast_intersection_check(v1) == 'unknown'
+    assert check_intersection(circular_fbas) is True
+
+def test_fast_intersection_6():
+    # This is an example wher the fbas is intertwined but the fast heuristic fails to see it
+    circular_fbas = FBAS.from_json(get_validators_from_test_data_file('circular_2.json'))
+    v1 = 'PK1'
+    assert circular_fbas.fast_intersection_check(v1) == 'unknown'
+    assert check_intersection(circular_fbas)
