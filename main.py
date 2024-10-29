@@ -32,9 +32,12 @@ def main():
 
     # Command for updating the data from Stellarbeat
     parser_stellarbeat = subparsers.add_parser('update-stellarbeat-cache', help="Update data downloaded from stellarbeat.io")
-    
+
     # Command for checking intersection
-    parser_check = subparsers.add_parser('check-intersection', help="Check intersection of quorums")
+    parser_check_intersection = subparsers.add_parser('check-intersection', help="Check intersection of quorums")
+    # add --fast option to check-intersection:
+    parser_check_intersection.add_argument('--fast', action='store_true', help="Use the fast heuristic")
+    parser_check_intersection.add_argument('--validator', help="Public key of the validator from whose viewpoint to check intersection")
 
     # Command for minimum splitting set
     parser_min_split = subparsers.add_parser('min-splitting-set', help="Find minimal splitting set")
@@ -80,15 +83,28 @@ def main():
     # set the log level:
     logging.getLogger().setLevel(args.log_level)
 
+    # group-by only applies to min-splitting-set:
+    if args.command != 'min-splitting-set' and args.group_by:
+        logging.error("--group-by only applies to the 'min-splitting-set' command")
+        exit(1)
+
     if args.command == 'update-stellarbeat-cache':
         mod = importlib.import_module('python_fbas.stellarbeat_data')
         mod.get_validators(update=True)
         logging.info("Cached data updated with fresh data from Stellarbeat")
 
     elif args.command == 'check-intersection':
+        # --fast require --validator:
+        if args.fast and not args.validator:
+            logging.error("--fast requires --validator")
+            exit(1)
         fbas = _load_fbas()
-        result = check_intersection(fbas)
-        print(f"Intersection result: {result}")
+        if not args.fast:
+            result = check_intersection(fbas)
+            print(f"Intersection-check result: {result}")
+        else:
+            result = fbas.fast_intersection_check(args.validator)
+            print(f"Intersection-check result: {result}")
 
     elif args.command == 'min-splitting-set':
         fbas = _load_fbas()

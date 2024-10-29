@@ -122,7 +122,14 @@ def test_fast_intersection():
 
     fbas2 = FBAS.from_json(get_validators_from_test_data_file('validators.json'))
     astro1 = "GDMAU3NHV4H7NZF5PY6O6SULIUKIIHPRYOKM7HMREK4BW65VHMDKNM6M"
-    # this validator seems to reach GDXQB3OMMQ6MGG43PWFBZWBFKBBDUZIVSUDAZZTRAWQZKES2CDSE5HKJ, which seems to be an old LOBSTR validator
-    # TODO: check what's up with this
     assert astro1 in fbas2.qset_map.keys()
-    assert fbas2.fast_intersection_check(astro1) == 'unknown'
+    assert fbas2.fast_intersection_check(astro1) == 'true'
+
+    old_lobster_validator = 'GDXQB3OMMQ6MGG43PWFBZWBFKBBDUZIVSUDAZZTRAWQZKES2CDSE5HKJ'
+    assert old_lobster_validator in fbas2.qset_map.keys()
+    assert fbas2.fast_intersection_check(old_lobster_validator) == 'true'
+
+    q3 = QSet.make(2, [1,2,3,4],[])
+    fbas3 = FBAS({1 : q3, 2 : q3, 3 : q3, 4 : q3})
+    assert fbas3.fast_intersection_check(1) == 'unknown'
+    assert fbas1.fast_intersection_check(1) == 'true'

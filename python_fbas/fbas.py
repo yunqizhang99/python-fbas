@@ -331,15 +331,17 @@ class FBAS:
         max_scc_qsets = {self.qset_map[v] for v in self.max_scc()}
         return min(qset_intersection_bound(q1, q2) for q1 in max_scc_qsets for q2 in max_scc_qsets)
 
-    def fast_intersection_check(self, point_of_view) -> Literal['true', 'unknown']:
+    def fast_intersection_check(self, v) -> Literal['true', 'unknown']:
         """
-        This is a fast but heuristic method to check whether the quorum intersection property holds. It may return 'unknown' even if the property holds.
+        This is a fast but heuristic method to check whether the set of validators reachable from v has quorum intersection.
+        It may return 'unknown' even if the property holds; however it is sound: if it returns 'true', then the property holds.
         """
-        # first, compute what's reachable from our point of view:
+        # first, compute what's reachable from v:
         g = self.to_graph()
-        reachable = nx.descendants(g, point_of_view) | {point_of_view}
+        reachable = nx.descendants(g, v) | {v}
         logging.info("There are %s reachable validators", len(reachable))
-        # compute the maximal sccs in the subgraph induced by reachable
+
+        # next, compute the maximal sccs in the subgraph induced by the reachable validators
         sccs = nx.strongly_connected_components(g.subgraph(reachable))
         # for each scc, check whether it contains an intertwined set whose closure covers all reachable validators.
         # check e.g. 10 sccs:
@@ -349,6 +351,7 @@ class FBAS:
                 # create an undirected graph over scc where there is an edge between v1 and v2 if and only if their QSets have a non-zero intersection bound:
                 intertwined = nx.Graph()
                 for v1, v2 in combinations(scc, 2):
+                    # TODO better qset-intersection check
                     if v1 != v2 and qset_intersection_bound(self.qset_map[v1], self.qset_map[v2]) > 0:
                         intertwined.add_edge(v1, v2)
                 # compute the maximal cliques in the intertwined graph:
@@ -358,7 +361,8 @@ class FBAS:
                 for _ in range(10):
                     try:
                         clique = next(cliques)
-                        if self.closure(clique) == self.validators():
+                        # if the closure of the clique contains the reachable validators, we're done:
+                        if reachable <= self.closure(clique):
                             return 'true'
                     except StopIteration:
                         break
