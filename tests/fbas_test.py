@@ -1,5 +1,5 @@
-from python_fbas.fbas import QSet, FBAS, qset_intersection_bound
 from test_utils import get_validators_from_test_data_file
+from python_fbas.fbas import QSet, FBAS, qset_intersection_bound
 from python_fbas.sat_based_fbas_analysis import check_intersection
 
 q1 = QSet.make(3, [1,2,3,4],[])
@@ -106,14 +106,6 @@ def test_weights():
     g2 = fbas2.to_weighed_graph()
     for (u,v) in g2.edges:
         assert g2[u][v]['weight'] == 1/9
-
-def test_collapse_qsets():
-    collapsed_fbas = fbas1.collapse_qsets()
-    qs = QSet.make(1, [0], [])
-    assert collapsed_fbas == FBAS({1: qs, 2: qs, 3: qs, 4: qs, 0: qs})
-    stellar = FBAS.from_json(get_validators_from_test_data_file('validators.json'))
-    collapsed_stellar = stellar.collapse_qsets(new_name=stellar.org_of_qset)
-    assert 'www.stellar.org' in collapsed_stellar.qset_map.keys()
 
 def test_fast_intersection_1():
     fbas = FBAS.from_json(get_validators_from_test_data_file('top_tier.json'))

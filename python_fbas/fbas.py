@@ -2,18 +2,20 @@
 A module for representing and working with Federated Byzantine Agreement Systems (FBAS).
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import logging
 from pprint import pformat
-from itertools import combinations, product, islice
-from typing import Any, Optional, Literal
-import networkx as nx
-from .utils import fixpoint
 from functools import lru_cache
+from itertools import combinations, product, islice
+from typing import Any, Optional, Literal, Callable
+import networkx as nx
+from python_fbas.utils import fixpoint
 
 
 @dataclass(frozen=True)
 class QSet:
+
+    # TODO: might make sense to make this a singleton
 
     """Stellar's so-called quorum sets (which are NOT sets of quorums, but instead represent sets of quorum slices)"""
 
@@ -163,6 +165,7 @@ def qset_intersect(q1: QSet, q2: QSet) -> bool:
     # now check whether every pair of slices intersects:
     return all(s1 & s2 for s1 in ss1 for s2 in ss2)
 
+
 @dataclass
 class FBAS:
     qset_map: dict[Any, QSet]
@@ -224,7 +227,7 @@ class FBAS:
                 logging.warning(
                     "Entry is missing publicKey, skipping: %s", v)
                 continue
-            if 'publicKey' not in v or 'quorumSet' not in v or v['quorumSet'] is None:
+            if 'quorumSet' not in v or v['quorumSet'] is None:
                 logging.warning(
                     "Using empty QSet for validator missing quorumSet: %s", v['publicKey'])
                 v['quorumSet'] = {'threshold': 0,
@@ -385,63 +388,8 @@ class FBAS:
     def splitting_set_bound_heuristic(self):
         pass
 
-    def collapse_qsets(self, new_name=None):
-        """
-        A QSet is collapsible if it can safely be replaced by a single (new) validator without impacting quorum intersection.
-        This method uses a heuristic to identify collapsible QSets and returns a new fbas where all identified QSets have been replaced by a new validator.
-        It might then be easier to check quorum intersection.
-        """
-        logging.info("Collapsing QSets")
-
-        def is_collapsible(qset):
-            res = (
-                # no inner QSets:
-                not qset.inner_qsets
-                # the validators of this QSet do not appear anywhere else:
-                and all(not (qset.validators & qs.validators) for qs in self.all_qsets() if qs != qset)
-                # the validators of this QSet all have the same QSet:
-                and len({self.qset_map[v] for v in qset.validators}) == 1
-                # threshold is greater than half:
-                and 2*qset.threshold > len(qset.validators))
-            if new_name:
-                print(f"qset {new_name(qset)} collapsible: {res}")
-            return res
-        # for each collapsible QSet, create a new validator:
-        collapsible = list(
-            {qs for qs in self.all_qsets() if is_collapsible(qs)})
-        # TODO why is this not a function?
-        validator_of_qset = {
-            qs: new_name(qs)
-            if new_name and new_name(qs) else collapsible.index(qs) for qs in collapsible
-        }
-        if validator_of_qset.values() & self.validators():
-            raise ValueError(
-                "New validators clash with existing validators")
-        # now replace all the collapsible qsets:
-
-        def replace_collapsible(qs):
-            if qs in collapsible:
-                return QSet.make(1, [validator_of_qset[qs]], [])
-            else:
-                return QSet.make(
-                    qs.threshold,
-                    qs.validators | {validator_of_qset[cqs]
-                                     for cqs in qs.inner_qsets & set(collapsible)},
-                    (ncqs for ncqs in qs.inner_qsets if ncqs not in collapsible))
-
-        def qset_of_collapsible(qset):
-            qset_of_members = self.qset_map[next(
-                iter(qset.validators))] if qset.validators else None
-            return (
-                replace_collapsible(qset_of_members)
-                    if qset_of_members not in collapsible
-                else QSet.make(1, [validator_of_qset[qset_of_members]], [])
-            )
-
-        new_qset_map=({v: replace_collapsible(qs) for v, qs in self.qset_map.items()} |
-                        {validator_of_qset[qs]: qset_of_collapsible(qs) for qs in collapsible})
-
-        return FBAS(new_qset_map)
+    def collapse_qsets(self) -> 'FBAS':
+        raise NotImplementedError
    
     def all_have_meta_field(self, field : str) -> bool:
         return all(field in self.metadata[v] for v in self.validators())
@@ -467,3 +415,122 @@ class FBAS:
                 'innerQuorumSets': [as_dict(iqs) for iqs in qset.inner_qsets]
             }
         return pformat(as_dict(qset), indent=2)
+
+# graph representation of an FBAS:
+
+@dataclass
+class FBASGraphNode:
+    id: Any # equality based on __eq__
+    threshold: int = 0
+    children: Optional[set['FBASGraphNode']] = None
+
+    def __post_init__(self):
+        if self.children is None:
+            self.children = set()
+        if (self.threshold < 0
+            or self.threshold > len(self.children)
+            or (self.threshold == 0 and self.children)):
+            raise ValueError(f"FBASGraphNode failed validation: {self}")
+        
+    def __eq__(self, other):
+        return self.id == other.id
+    
+    def __hash__(self):
+        return hash(self.id)
+
+class FBASGraph:
+    nodes: set[FBASGraphNode]
+    parents: dict[FBASGraphNode, set[FBASGraphNode]]
+
+    def __init__(self):
+        self.nodes = set()
+        self.parents = dict()
+
+    def add_node(self, id: Any) -> FBASGraphNode:
+        for n in self.nodes:
+            if n.id == id:
+                return n
+        n = FBASGraphNode(id)
+        self.nodes.add(n)
+        return n
+        
+    def add_qset(self, qset: QSet) -> FBASGraphNode:
+        for n in self.nodes:
+            if n.id == qset:
+                return n
+        iqs = [self.add_qset(iq) for iq in qset.inner_qsets]
+        vs = [self.add_node(v) for v in qset.validators]
+        children = set(iqs) | set(vs)
+        n = FBASGraphNode(qset, qset.threshold, children)
+        self.nodes.add(n)
+        for c in children:
+            self.parents[c] = self.parents.get(c, set()) | {n}
+        return n
+    
+    def update_validator(self, v, qset : QSet) -> FBASGraphNode:
+        qset_node = self.add_qset(qset)
+        n = self.add_node(v)
+        n.threshold = 1
+        n.children = {qset_node}
+        self.parents[qset_node] = self.parents.get(qset_node, set()) | {n}
+        return n
+                
+    @staticmethod
+    def from_json(data : list) -> 'FBASGraph':
+        # first sanitize the data a bit:
+        validators = []
+        keys = set()
+        for v in data:
+            if not isinstance(v, dict):
+                logging.warning("Ignoring non-dict entry: %s", v)
+                continue
+            if 'publicKey' not in v:
+                logging.warning(
+                    "Entry is missing publicKey, skipping: %s", v)
+                continue
+            if ('isValidator' not in v or not v['isValidator']) \
+                or ('isValidating' not in v or not v['isValidating']):
+                logging.warning(
+                    "Ignoring non-validating validator: %s (name: %s)", v['publicKey'], v.get('name'))
+                continue
+            if 'quorumSet' not in v or v['quorumSet'] is None:
+                logging.warning(
+                    "Using empty QSet for validator missing quorumSet: %s", v['publicKey'])
+                v['quorumSet'] = {'threshold': 0,
+                                  'validators': [], 'innerQuorumSets': []}
+            if v['publicKey'] in keys:
+                logging.warning(
+                    "Ignoring duplicate validator: %s", v['publicKey'])
+                continue
+            keys.add(v['publicKey'])
+            validators.append(v)
+        # now create the graph:
+        graph = FBASGraph()
+        for v in validators:
+            qset = QSet.from_json(v['quorumSet'])
+            graph.update_validator(v['publicKey'], qset)
+        return graph
+
+    def collapse(self) -> None:
+        """Make the FBASGraph smaller by repeatedly collpasing nodes"""
+        
+        def collapse_node(n: FBASGraphNode) -> bool:
+            """collapse diamonds with > 1/2 threshold"""
+            child = next(iter(n.children))
+            grandchild = next(iter(child.children))
+            is_diamond = (
+                all(self.parents[c] == {n} for c in n.children)
+                and all(c.children == set(grandchild) for c in n.children)
+                and 2*n.threshold > len(n.children))
+            if is_diamond:
+                logging.info("Collapsing diamond at: %s", n)
+                n.threshold = 1
+                n.children = set(grandchild)
+                for c in n.children:
+                    del self.parents[c]
+                    self.nodes.remove(c)
+            return is_diamond
+
+        # now collapse nodes until nothing changes:
+        while any(collapse_node(n) for n in self.nodes):
+            pass
