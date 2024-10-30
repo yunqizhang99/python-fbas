@@ -7,7 +7,7 @@ import logging
 from pprint import pformat
 from functools import lru_cache
 from itertools import combinations, product, islice
-from typing import Any, Optional, Literal, Callable
+from typing import Any, Optional, Literal, Mapping, Sequence
 import networkx as nx
 from python_fbas.utils import fixpoint
 
@@ -417,6 +417,7 @@ class FBAS:
         return pformat(as_dict(qset), indent=2)
 
 # graph representation of an FBAS:
+# TODO: The whole approach seems wrong. We need to differentiate between validators and qsets! We cannot collapse validators!
 
 @dataclass
 class FBASGraphNode:
@@ -437,6 +438,11 @@ class FBASGraphNode:
     
     def __hash__(self):
         return hash(self.id)
+    
+    def __str__(self):
+        def pretty_id(i):
+            return hash(i) if isinstance(i, QSet) else i
+        return f"FBASGraphNode({pretty_id(self.id)}, {self.threshold}, {set(pretty_id(c.id) for c in self.children)})"
 
 class FBASGraph:
     nodes: set[FBASGraphNode]
@@ -474,9 +480,30 @@ class FBASGraph:
         n.children = {qset_node}
         self.parents[qset_node] = self.parents.get(qset_node, set()) | {n}
         return n
+
+    def check_integrity(self):
+        for n in self.nodes:
+            if n.threshold < 0 or n.threshold > len(n.children):
+                raise ValueError(f"Integrity check failed: threshold is not in [0, len(children)]")
+            for c in n.children:
+                if c not in self.nodes:
+                    raise ValueError(f"Integrity check failed: a child is not in the set of nodes")
+                if n not in self.parents[c]:
+                    raise ValueError(f"Integrity check failed: parent is not in the parents set")
+        for n,ps in self.parents.items():
+            for p in ps:
+                if p not in self.nodes:
+                    raise ValueError(f"Integrity check failed: a parent is not in the set of nodes")
+                if n not in p.children:
+                    raise ValueError(f"Integrity check failed: child is not in the children set")
                 
+    def __str__(self):
+        def pretty_id(n):
+            return hash(n.id) if isinstance(n.id, QSet) else n.id
+        return pformat({pretty_id(n): (n.threshold, [pretty_id(c) for c in n.children]) for n in self.nodes}, indent=2)
+
     @staticmethod
-    def from_json(data : list) -> 'FBASGraph':
+    def from_json(data : list, from_stellarbeat = False) -> 'FBASGraph':
         # first sanitize the data a bit:
         validators = []
         keys = set()
@@ -488,8 +515,9 @@ class FBASGraph:
                 logging.warning(
                     "Entry is missing publicKey, skipping: %s", v)
                 continue
-            if ('isValidator' not in v or not v['isValidator']) \
-                or ('isValidating' not in v or not v['isValidating']):
+            if (from_stellarbeat and (
+                    ('isValidator' not in v or not v['isValidator'])
+                    or ('isValidating' not in v or not v['isValidating']))):
                 logging.warning(
                     "Ignoring non-validating validator: %s (name: %s)", v['publicKey'], v.get('name'))
                 continue
@@ -514,23 +542,40 @@ class FBASGraph:
     def collapse(self) -> None:
         """Make the FBASGraph smaller by repeatedly collpasing nodes"""
         
-        def collapse_node(n: FBASGraphNode) -> bool:
+        def collapse_diamond(n: FBASGraphNode) -> bool:
             """collapse diamonds with > 1/2 threshold"""
+            if not n.children:
+                return False
             child = next(iter(n.children))
+            if not child.children:
+                return False
             grandchild = next(iter(child.children))
             is_diamond = (
                 all(self.parents[c] == {n} for c in n.children)
-                and all(c.children == set(grandchild) for c in n.children)
+                and all(c.children == set([grandchild]) for c in n.children)
                 and 2*n.threshold > len(n.children))
             if is_diamond:
-                logging.info("Collapsing diamond at: %s", n)
-                n.threshold = 1
-                n.children = set(grandchild)
-                for c in n.children:
-                    del self.parents[c]
+                logging.debug("Collapsing diamond at: %s", n)
+                children = n.children
+                for c in children:
                     self.nodes.remove(c)
+                    del self.parents[c]
+                if n != grandchild:
+                    n.children = set([grandchild])
+                    n.threshold = 1
+                    self.parents[grandchild] -= children
+                    self.parents[grandchild] |= set([n])
+                else:
+                    n.children = set()
+                    n.threshold = 0
+                    self.parents[n] -= children
             return is_diamond
 
         # now collapse nodes until nothing changes:
-        while any(collapse_node(n) for n in self.nodes):
-            pass
+        while True:
+            self.check_integrity()
+            for n in self.nodes:
+                if collapse_diamond(n):
+                    break
+            else:
+                return
