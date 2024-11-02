@@ -256,6 +256,13 @@ class FBAS:
             quorumSet=v.to_json(),
             **self.metadata.get(k, {})
         ) for k, v in self.qset_map.items()]
+    
+    def restrict_to_reachable(self, v):
+        """
+        Returns a new FBAS with only the validators reachable from v.
+        """
+        reachable = nx.descendants(self.to_graph(), v) | {v}
+        return FBAS({k: qs for k, qs in self.qset_map.items() if k in reachable}, self.metadata)
 
     def is_org_structured(self) -> bool:
         """

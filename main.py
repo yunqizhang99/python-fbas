@@ -2,8 +2,8 @@ import json
 import argparse
 import importlib
 import logging
-from python_fbas.sat_based_fbas_analysis import check_intersection, min_splitting_set, min_blocking_set
-from python_fbas.overlay import optimal_overlay, constellation_graph
+from python_fbas.sat_based_fbas_analysis import check_intersection, min_splitting_set, min_blocking_set, is_in_min_quorum_of
+from python_fbas.overlay import optimal_overlay
 from python_fbas.fbas import FBAS
 from python_fbas.fbas_generator import gen_symmetric_fbas
 
@@ -54,6 +54,11 @@ def main():
     parser_symmetric.add_argument('n', type=int, help="Number of validators")
     # Add file output option:
     parser_symmetric.add_argument('--output', help="Output file")
+
+    # Command taking two validators and checking if one is in the min quorum of the other:
+    parser_is_in_min_quorum_of = subparsers.add_parser('is-in-min-quorum-of', help="Check if one validator is in the min quorum of another")
+    parser_is_in_min_quorum_of.add_argument('validator1', help="Public key of the first validator")
+    parser_is_in_min_quorum_of.add_argument('validator2', help="Public key of the second validator")
 
     def _load_fbas_from_stellarbeat():
         mod = importlib.import_module('python_fbas.stellarbeat_data')
@@ -114,15 +119,13 @@ def main():
         result = optimal_overlay(fbas)
         print(f"Optimal overlay: {result}")
 
-    elif args.command == 'constellation-overlay':
-        fbas = _load_fbas()
-        # parse card encoding as integer:
-        args.card_encoding = int(args.card_encoding)
-        result = constellation_graph(fbas, card_encoding=args.card_encoding)
-        print(f"Constellation overlay: {result}")
-
     elif args.command == 'gen-symmetric-fbas':
         gen_symmetric_fbas(args.n, output=args.output)
+
+    elif args.command == 'is-in-min-quorum-of':
+        fbas = _load_fbas()
+        result = is_in_min_quorum_of(fbas, args.validator1, args.validator2)
+        print(f"Is {args.validator1} ({fbas.metadata[args.validator1]['name']}) in a min quorum of {args.validator2} ({fbas.metadata[args.validator2]['name']})? {result}")
 
     else:
         parser.print_help()

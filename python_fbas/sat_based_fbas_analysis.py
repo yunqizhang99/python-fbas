@@ -248,17 +248,22 @@ def min_blocking_set(fbas, solver_class=LSU):  # LSU seems to perform the best
     else:
         return frozenset()
     
-def is_in_min_quorum_of(fbas, v1, v2, solver='cms'):
+def is_in_min_quorum_of(fbas : FBAS, v1, v2, solver='cms') -> bool:
     """
     Checks whether v1 is in a minimal quorum of v2 by checking the satisfiability of a quantified boolean formula.
-    We assert that A is a quorum containing v1 and v2, and that for all quorums B containing v1, B is not a subset of A.
+    We assert that A is a quorum of v1 and v2, and that for all quorums B of v2, B is not a subset of A.
+    If this is SAT, then v1 is in a minimal quorum of v2.
 
     One tricky part is that this has to be converted to a PCNF formula. We can do this using the Tseitin transformation but we need to make sure that we existentially quantify the new variables in the scope of the originally universally quantified variables. This formula should look like this: exists orginal_exists_vars. forall original_forall_vars. exists new_vars : CNF_formula
     """
-    if v1 == v2:
+    if v2 == v1:
         return True
     
-    # collapsed_fbas = fbas.collapse_qsets()
+    fbas = fbas.restrict_to_reachable(v2)
+    # if v1 is not in the fbas anymore, return False:
+    if v1 not in fbas.validators():
+        return False
+    
     A_constraints : list[Formula] = []
     B_constraints : list[Formula] = []
     def in_quorum(q, x):
@@ -270,13 +275,13 @@ def is_in_min_quorum_of(fbas, v1, v2, solver='cms'):
                     for v in fbas.validators()]
     A_constraints += [Implies(in_quorum('A', qs), qset_satisfied('A', qs))
                     for qs in fbas.all_qsets()]
-    A_constraints += [in_quorum('A', v1), in_quorum('A', v2)]
+    A_constraints += [in_quorum('A', v2), in_quorum('A', v1)]
 
     B_constraints += [Implies(in_quorum('B',v), in_quorum('B', fbas.qset_map[v]))
                     for v in fbas.validators()]
     B_constraints += [Implies(in_quorum('B', qs), qset_satisfied('B', qs))
                     for qs in fbas.all_qsets()]
-    B_constraints += [in_quorum('B', v1)]
+    B_constraints += [in_quorum('B', v2)]
     B_constraints += [Neg(And(in_quorum('B', v), Neg(in_quorum('A', v)))) for v in fbas.validators()]
     B_constraints += [Or(*[And(in_quorum('A',v), Neg(in_quorum('B',v))) for v in fbas.validators()])]
 
@@ -298,10 +303,10 @@ def is_in_min_quorum_of(fbas, v1, v2, solver='cms'):
     s = QSolver(name='depqbf', bootstrap_with=pcnf)
     res = s.solve()
     if res:
-        logging.info("%s is in a minimal quorum of %s", v2, v1)
+        logging.info("%s is in a minimal quorum of %s", v1, v2)
         model = s.get_model()
         fmlas = [f for f in Formula.formulas(model, atoms_only=True)]
         logging.info("Minimal quorum: %s", _get_quorum_from_atoms(fmlas, 'A'))
     else:
-        logging.info("%s is not in a minimal quorum of %s", v2, v1)
+        logging.info("%s is not in a minimal quorum of %s", v1, v2)
     return res
