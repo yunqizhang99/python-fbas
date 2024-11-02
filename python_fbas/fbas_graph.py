@@ -6,15 +6,20 @@ from pprint import pformat
 from python_fbas.fbas import QSet
 from python_fbas.utils import powerset
 
+# TODO we don't really need QSet, do we?
+
 @dataclass
 class FBASGraphNode:
     label: Any
     threshold: int = 0
     children: Optional[set['FBASGraphNode']] = None
+    meta: Optional[dict] = None
 
     def __post_init__(self):
         if self.children is None:
             self.children = set()
+        if self.meta is None:
+            self.meta = dict()
         if (self.threshold < 0
             or self.threshold > len(self.children)
             or (self.threshold == 0 and self.children)):
@@ -73,20 +78,20 @@ class FBASGraph:
             'thresholds_distribution' : thresholds_distribution()
         }
 
-    def add_node(self, label: Any) -> FBASGraphNode:
+    def add_node(self, label: Any, meta: Optional[dict] = None) -> FBASGraphNode:
         for n in self.nodes:
             if n.label == label:
                 return n
-        n = FBASGraphNode(label)
+        n = FBASGraphNode(label, meta=meta)
         self.nodes.add(n)
         return n
         
-    def add_validator(self, v: Any) -> FBASGraphNode:
+    def add_validator(self, v: Any, meta: Optional[dict] = None) -> FBASGraphNode:
         for val in self.validators:
             if val.label == v:
                 return val
         assert v not in self.nodes
-        n = FBASGraphNode(v)
+        n = FBASGraphNode(v, meta=meta)
         self.nodes.add(n)
         self.validators.add(n)
         return n
@@ -209,13 +214,16 @@ class FBASGraph:
         """
         Returns True if and only if s is a quorum.
         """
+        assert all(not isinstance(n, FBASGraphNode) for n in s)
         vs = {n for n in self.nodes if n.label in s}
         assert len(vs) == len(s) and vs <= self.validators
         return all(self.is_sat(v, vs) for v in vs)
             
-    def naive_quorum_intersection_check(self) -> bool:
+    def find_disjoint_quorums(self) -> Optional[tuple[set, set]]:
         """
-        Brute force quorum intersection check.
-        Returns True if and only if the graph has quorum intersection.
+        Naive, brute-force search for disjoint quorums.
+        Warning: use only for very small fbas graphs.
         """
-        pass
+        assert len(self.validators) < 10
+        quorums = [q for q in powerset([v.label for v in self.validators]) if q and self.is_quorum(q)]
+        return next(((q1, q2) for q1 in quorums for q2 in quorums if not (q1 & q2)), None)

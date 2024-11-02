@@ -1,4 +1,5 @@
 from pysat.formula import Formula
+from collections.abc import Sequence
 
 def to_cnf(fmlas : list[Formula]) -> list:
     """Convert a list of formulas to CNF."""
@@ -22,9 +23,9 @@ def fixpoint(f, x):
             return x
         x = y
 
-def powerset(s):
-    """A generator for the powerset of s."""
+def powerset(s : Sequence):
+    """A generator for the powerset of s. Assume elements in s are unique."""
     x = len(s)
     # each x-bit number represents a subset of s:
     for i in range(1 << x):
-        yield [s[j] for j in range(x) if (i & (1 << j))]
+        yield {s[j] for j in range(x) if (i & (1 << j))}
