@@ -21,3 +21,10 @@ def fixpoint(f, x):
         if x == y:
             return x
         x = y
+
+def powerset(s):
+    """A generator for the powerset of s."""
+    x = len(s)
+    # each x-bit number represents a subset of s:
+    for i in range(1 << x):
+        yield [s[j] for j in range(x) if (i & (1 << j))]

@@ -1,19 +1,14 @@
 from typing import Any, Optional
+from collections.abc import Collection
 import logging
 from dataclasses import dataclass
 from pprint import pformat
 from python_fbas.fbas import QSet
-
-
-# graph representation of an FBAS:
-# TODO: The whole approach seems wrong. We need to differentiate between validators and qsets! We cannot collapse validators!
-# Or maybe it's fine if all qsets self-intersect? But what if they don't?
-# Maybe an easy way to fix it is to only collapse stuff that has more than one child (since that can't be validators).
-# But in the end when checking intersection we still need to check that there are _validators_ in common, not just qsets.
+from python_fbas.utils import powerset
 
 @dataclass
 class FBASGraphNode:
-    id: Any # equality based on __eq__
+    label: Any
     threshold: int = 0
     children: Optional[set['FBASGraphNode']] = None
 
@@ -26,19 +21,24 @@ class FBASGraphNode:
             raise ValueError(f"FBASGraphNode failed validation: {self}")
         
     def __eq__(self, other):
-        return self.id == other.id
+        return isinstance(other, FBASGraphNode) and self.label == other.label
     
     def __hash__(self):
-        return hash(self.id)
+        return hash(self.label)
     
     def __str__(self):
         def pretty_id(i):
             return hash(i) if isinstance(i, QSet) else i
-        return f"FBASGraphNode({pretty_id(self.id)}, {self.threshold}, {set(pretty_id(c.id) for c in self.children)})"
+        return f"FBASGraphNode({pretty_id(self.label)}, {self.threshold}, {set(pretty_id(c.label) for c in self.children)})"
 
 class FBASGraph:
+    """
+    A graph whose nodes are either validators or QSets.
+    Each node has a treshold and a set of children.
+    No two nodes are __eq__ (__eq__ and 'is' should coincide)
+    """
     nodes: set[FBASGraphNode]
-    validators: set[FBASGraphNode]
+    validators: set[FBASGraphNode] # a subset of the nodes in the graph represent validators
     parents: dict[FBASGraphNode, set[FBASGraphNode]]
 
     def __init__(self):
@@ -49,10 +49,10 @@ class FBASGraph:
     def check_integrity(self):
         for v in self.validators:
             if v not in self.nodes:
-                raise ValueError(f"Integrity check failed: validator {v.id} not in nodes")
+                raise ValueError(f"Integrity check failed: validator {v.label} not in nodes")
         for n in self.nodes:
             if n.threshold < 0 or n.threshold > len(n.children):
-                raise ValueError(f"Integrity check failed: threshold of {n.id} not in [0, len(children)]")
+                raise ValueError(f"Integrity check failed: threshold of {n.label} not in [0, len(children)]")
             for c in n.children:
                 if c not in self.nodes:
                     raise ValueError("Integrity check failed: a child is not in the set of nodes")
@@ -73,26 +73,27 @@ class FBASGraph:
             'thresholds_distribution' : thresholds_distribution()
         }
 
-    def add_node(self, id: Any) -> FBASGraphNode:
+    def add_node(self, label: Any) -> FBASGraphNode:
         for n in self.nodes:
-            if n.id == id:
+            if n.label == label:
                 return n
-        n = FBASGraphNode(id)
+        n = FBASGraphNode(label)
         self.nodes.add(n)
         return n
         
     def add_validator(self, v: Any) -> FBASGraphNode:
-        for w in self.validators:
-            if w.id == v:
-                return w
+        for val in self.validators:
+            if val.label == v:
+                return val
         assert v not in self.nodes
-        n = self.add_node(v)
+        n = FBASGraphNode(v)
+        self.nodes.add(n)
         self.validators.add(n)
         return n
 
     def add_qset(self, qset: QSet) -> FBASGraphNode:
         for n in self.nodes:
-            if n.id == qset:
+            if n.label == qset:
                 return n
         iqs = [self.add_qset(iq) for iq in qset.inner_qsets]
         vs = [self.add_validator(v) for v in qset.validators]
@@ -153,8 +154,11 @@ class FBASGraph:
             graph.update_validator(v['publicKey'], qset)
         return graph
 
-    def collapse(self) -> None:
-        """Make the FBASGraph smaller by repeatedly collpasing nodes"""
+    def flatten_diamonds(self) -> None:
+        """
+        Roughly speaking, we identify all the "diamonds" in the graph and "flatten" them.
+        This operation preserves quorum intersection.
+        """
         
         def collapse_diamond(n: FBASGraphNode) -> bool:
             """collapse diamonds with > 1/2 threshold"""
@@ -170,6 +174,8 @@ class FBASGraph:
                 and 2*n.threshold > len(n.children))
             if is_diamond:
                 logging.debug("Collapsing diamond at: %s", n)
+                assert n not in self.validators
+                self.validators |= set([n])
                 for c in n.children:
                     del self.parents[c]
                 if n != grandchild:
@@ -183,9 +189,33 @@ class FBASGraph:
 
         # now collapse nodes until nothing changes:
         while True:
-            self.check_integrity()
+            self.check_integrity() # for debugging
             for n in self.nodes:
                 if collapse_diamond(n):
                     break
             else:
                 return
+            
+    def is_sat(self, n: FBASGraphNode, s: set[FBASGraphNode]) -> bool:
+        """
+        Returns True if and only if n's agreement requirements are satisfied by s.
+        """
+        if all(c in self.validators for c in n.children):
+            return n.threshold <= sum(1 for c in n.children if c in s)
+        else:
+            return n.threshold <= sum(1 for c in n.children if self.is_sat(c , s))
+
+    def is_quorum(self, s: Collection) -> bool:
+        """
+        Returns True if and only if s is a quorum.
+        """
+        vs = {n for n in self.nodes if n.label in s}
+        assert len(vs) == len(s) and vs <= self.validators
+        return all(self.is_sat(v, vs) for v in vs)
+            
+    def naive_quorum_intersection_check(self) -> bool:
+        """
+        Brute force quorum intersection check.
+        Returns True if and only if the graph has quorum intersection.
+        """
+        pass
