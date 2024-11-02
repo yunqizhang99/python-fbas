@@ -26,6 +26,13 @@ def test_is_quorum():
     assert fbas.is_quorum({'PK11','PK12','PKX','PK22','PK23'})
     assert not fbas.is_quorum({'PK11','PK12','PKX','PK22'})
 
+    
+def test_is_sat():
+    fbas = FBASGraph.from_json(get_validators_from_test_fbas('circular_2.json'))
+    assert fbas.is_sat('PK3', {'PK3'})
+    assert fbas.is_sat('PK2', {'PK3'})
+    assert not fbas.is_sat('PK1', {'PK3'})
+
 def test_find_disjoint_quorums():
     fbas1 = FBASGraph.from_json(get_validators_from_test_fbas('conflicted.json'))
     q1, q2 = fbas1.find_disjoint_quorums()
