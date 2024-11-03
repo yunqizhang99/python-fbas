@@ -1,5 +1,5 @@
-from pysat.formula import Formula
 from collections.abc import Sequence
+from pysat.formula import Formula
 
 def to_cnf(fmlas : list[Formula]) -> list:
     """Convert a list of formulas to CNF."""

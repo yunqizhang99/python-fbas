@@ -101,6 +101,7 @@ class FBASGraph:
         """
         Takes a qset as a JSON-serializable dict in stellarbeat.io format.
         Returns the qset if it already exists, otherwise adds it to the graph.
+        TODO: might have been better to create synthetic qset nodes with unique identifiers and separately track the qset data.
         """
         match qset:
             case {'threshold': t, 'validators': vs, 'innerQuorumSets': iqs}:
@@ -120,12 +121,18 @@ class FBASGraph:
         # number qset nodes from 1 to n:
         qset_nodes = {n for n in self.graph.nodes() if not n in self.validators}
         qset_index = {n:i for i,n in enumerate(qset_nodes, 1)}
+        # logical_validators = {n for n in self.validators if 'logical' in self.graph.nodes[n]}
+        # logical_validators_index = {n:i for i,n in enumerate(logical_validators, 1)}
         def node_repr(n):
             if n in self.validators:
                 return f"{n}"
+                # if not 'logical' in self.graph.nodes[n]:
+                #     return f"{n}"
+                # else:
+                #     return f"_l{logical_validators_index[n]}"
             else:
-                return f"q{qset_index[n]}"
-        res = {node_repr(n) : f"({t}, {list(map(node_repr, self.graph.successors(n)))})"
+                return f"_q{qset_index[n]}"
+        res = {node_repr(n) : f"({t}, {set(map(node_repr, self.graph.successors(n)))})"
                 for n,t in self.graph.nodes('threshold')}
         return pformat(res)
 
@@ -160,25 +167,23 @@ class FBASGraph:
         keys = set()
         for v in data:
             if not isinstance(v, dict):
-                logging.warning("Ignoring non-dict entry: %s", v)
+                logging.debug("Ignoring non-dict entry: %s", v)
                 continue
             if 'publicKey' not in v:
-                logging.warning(
+                logging.debug(
                     "Entry is missing publicKey, skipping: %s", v)
                 continue
             if (from_stellarbeat and (
                     ('isValidator' not in v or not v['isValidator'])
                     or ('isValidating' not in v or not v['isValidating']))):
-                logging.warning(
+                logging.debug(
                     "Ignoring non-validating validator: %s (name: %s)", v['publicKey'], v.get('name'))
                 continue
             if 'quorumSet' not in v or v['quorumSet'] is None:
-                logging.warning(
-                    "Using empty QSet for validator missing quorumSet: %s", v['publicKey'])
-                v['quorumSet'] = {'threshold': 0,
-                                  'validators': [], 'innerQuorumSets': []}
+                logging.debug("Skipping validator missing quorumSet: %s", v['publicKey'])
+                continue
             if v['publicKey'] in keys:
-                logging.warning(
+                logging.debug(
                     "Ignoring duplicate validator: %s", v['publicKey'])
                 continue
             keys.add(v['publicKey'])
@@ -193,12 +198,18 @@ class FBASGraph:
     def flatten_diamonds(self) -> None:
         """
         Identify all the "diamonds" in the graph and "flatten" them.
+        This creates a new logical validator in place of the diamond, and a 'logical' attribute set to True.
         A diamond is formed by a qset node show children have no other parent, whose threshold is non-zero and strictly greater than half, and that has a unique grandchild.
         This operation mutates the FBAS in place.
         It preserves both quorum intersection and non-intersection.
         """
+
+        # a counter to create fresh logical validators:
+        count = 1
+
         def collapse_diamond(n: Any) -> bool:
             """collapse diamonds with > 1/2 threshold"""
+            nonlocal count
             assert n in self.graph.nodes
             # condition on threshold:
             if self.threshold(n) <= 1 or 2*self.threshold(n) < self.graph.out_degree(n)+1:
@@ -215,22 +226,26 @@ class FBASGraph:
             grandchild = next(iter(grandchildren))
             logging.debug("Collapsing diamond at: %s", n)
             assert n not in self.validators # canary
-            # add n to the set of validators:
-            self.validators |= {n}
-            out_edges = list(self.graph.out_edges(n))
-            self.graph.remove_edges_from(out_edges)
+            # first remove the node:
+            in_edges = list(self.graph.in_edges(n)) 
+            self.graph.remove_node(n)
+            # now add the new node:
+            new_node = f"_l{count}"
+            count += 1
+            for e in in_edges:
+                self.graph.add_edge(e[0], new_node)
             if n != grandchild:
-                self.graph.add_edge(n, grandchild)
-                self.update_validator(n, attrs={'threshold': 1})
+                self.graph.add_edge(new_node, grandchild)
+                self.update_validator(new_node, attrs={'threshold': 1, 'logical': True})
             else:
-                self.update_validator(n, attrs={'threshold': 0})
+                self.update_validator(new_node, attrs={'threshold': 0, 'logical': True})
             return True
 
         # now collapse nodes until nothing changes:
         while True:
-            self.check_integrity() # canary 
             for n in self.graph.nodes():
                 if collapse_diamond(n):
+                    self.check_integrity() # canary 
                     break
             else:
                 return
