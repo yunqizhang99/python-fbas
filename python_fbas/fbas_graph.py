@@ -3,7 +3,7 @@ Federated Byzantine Agreement System (FBAS) represented as graphs.
 """
 
 from typing import Any, Optional, Tuple
-from collections.abc import Collection, Set
+from collections.abc import Collection
 import logging
 from pprint import pformat
 import networkx as nx
@@ -141,7 +141,15 @@ class FBASGraph:
             return -1
         else:
             raise ValueError(f"Node {n} has no threshold attribute and out-degree > 1")
-        
+    
+    def qset_node_of(self, n: Any) -> tuple[int, frozenset]:
+        """
+        Returns the qset node of the given validator node (i.e. its successor).
+        """
+        assert n in self.validators
+        assert self.graph.out_degree(n) == 1
+        return next(self.graph.successors(n))
+    
     @staticmethod
     def from_json(data : list, from_stellarbeat = False) -> 'FBASGraph':
         """
@@ -247,7 +255,7 @@ class FBASGraph:
         if self.graph.out_degree(n) == 0:
             return False
         else:
-            return self.is_qset_sat(next(self.graph.successors(n)), s)
+            return self.is_qset_sat(self.qset_node_of(n), s)
 
     def qset_nodes(self, n: Any) -> frozenset:
         """
@@ -260,14 +268,6 @@ class FBASGraph:
         else:
             return frozenset([n]) | frozenset.union(*[self.qset_nodes(c) for c in self.graph.successors(n)])
     
-    def qset_node_of(self, n: Any) -> tuple[int, frozenset]:
-        """
-        Returns the qset node of the given validator node (i.e. its successor).
-        """
-        assert n in self.validators
-        assert self.graph.out_degree(n) == 1
-        return next(self.graph.successors(n))
-
     def is_quorum(self, vs: Collection) -> bool:
         """
         Returns True if and only if s is a non-empty quorum.
@@ -277,7 +277,7 @@ class FBASGraph:
             return False
         assert set(vs) <= self.validators
         return all(self.is_sat(v, vs) for v in vs)
-            
+    
     def find_disjoint_quorums(self) -> Optional[tuple[set, set]]:
         """
         Naive, brute-force search for disjoint quorums.
@@ -286,3 +286,23 @@ class FBASGraph:
         assert len(self.validators) < 10
         quorums = [q for q in powerset(list(self.validators)) if self.is_quorum(q)]
         return next(((q1, q2) for q1 in quorums for q2 in quorums if not (q1 & q2)), None)
+    
+    def blocks(self, s : Collection, n : Any) -> bool:
+        """
+        Returns True if and only if s blocks v.
+        """
+        if self.threshold(n) == -1:
+            return False
+        return self.threshold(n) + sum(1 for c in self.graph.successors(n) if c in s) > self.graph.out_degree(n)
+    
+    def closure(self, vs: Collection) -> frozenset:
+        """
+        Returns the closure of the set of validators vs.
+        """
+        assert set(vs) <= self.validators
+        closure = set(vs)
+        while True:
+            new = {n for n in self.graph.nodes() - closure if self.blocks(closure, n)}
+            if not new:
+                return frozenset([v for v in closure if v in self.validators])
+            closure |= new

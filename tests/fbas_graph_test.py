@@ -54,3 +54,26 @@ def test_find_disjoint_quorums():
     assert not fbas2.find_disjoint_quorums()
     fbas3 = FBASGraph.from_json(get_validators_from_test_fbas('circular_2.json'))
     assert not fbas3.find_disjoint_quorums()
+
+def test_closure():
+    data = get_test_data_list()
+    for f,d in data.items():
+        logging.info("loading graph of %s", f)
+        fbas_graph = FBASGraph.from_json(d)
+        if fbas_graph.validators:
+            for _ in range(100):
+                # pick a random subset of validators:
+                n = random.randint(1, len(fbas_graph.validators))
+                validators = random.sample(list(fbas_graph.validators), n)
+                assert fbas_graph.closure(validators)
+
+def test_closure_2():
+    fbas = FBASGraph.from_json(get_validators_from_test_fbas('circular_2.json'))
+    assert fbas.closure({'PK3'}) == {'PK1', 'PK2', 'PK3'}
+    assert fbas.closure({'PK2'}) == {'PK1', 'PK2'}
+    assert fbas.closure({'PK1'}) == {'PK1'}
+    assert fbas.closure({'PK2','PK3'}) == {'PK1', 'PK2', 'PK3'}
+    fbas2 = FBASGraph.from_json(get_validators_from_test_fbas('conflicted.json'))
+    assert fbas2.closure({'PK11','PK12'}) == {'PK11','PK12','PK13','PKX'}
+    assert fbas2.closure({'PKX'}) == {'PKX'}
+    assert fbas2.closure({'PK11','PK22'}) == {'PK11','PK22'}
