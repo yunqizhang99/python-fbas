@@ -1,5 +1,6 @@
 import logging
 import pytest
+import random
 from test_utils import get_test_data_list, get_validators_from_test_fbas
 from python_fbas.fbas_graph import FBASGraph
 
@@ -27,7 +28,18 @@ def test_is_quorum():
     assert fbas.is_quorum({'PK11','PK12','PKX','PK22','PK23'})
     assert not fbas.is_quorum({'PK11','PK12','PKX','PK22'})
 
-    
+def test_is_quorum_2():
+    data = get_test_data_list()
+    for f,d in data.items():
+        logging.info("loading graph of %s", f)
+        fbas_graph = FBASGraph.from_json(d)
+        if fbas_graph.validators:
+            for _ in range(100):
+                # pick a random subset of validators:
+                n = random.randint(1, len(fbas_graph.validators))
+                validators = random.sample(list(fbas_graph.validators), n)
+                fbas_graph.is_quorum(validators)
+
 def test_is_sat():
     fbas = FBASGraph.from_json(get_validators_from_test_fbas('circular_2.json'))
     assert fbas.is_sat('PK3', {'PK3'})

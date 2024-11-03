@@ -3,43 +3,11 @@ Federated Byzantine Agreement System (FBAS) represented as graphs.
 """
 
 from typing import Any, Optional, Tuple
-from collections.abc import Collection
+from collections.abc import Collection, Set
 import logging
-from dataclasses import dataclass
 from pprint import pformat
 import networkx as nx
 from python_fbas.utils import powerset
-
-# TODO we don't really need QSet, do we?
-# TODO use nx?
-
-@dataclass
-class FBASGraphNode:
-    label: Any
-    threshold: int = 0
-    children: Optional[set['FBASGraphNode']] = None
-    meta: Optional[dict] = None
-
-    def __post_init__(self):
-        if self.children is None:
-            self.children = set()
-        if self.meta is None:
-            self.meta = dict()
-        if (self.threshold < 0
-            or self.threshold > len(self.children)
-            or (self.threshold == 0 and self.children)):
-            raise ValueError(f"FBASGraphNode failed validation: {self}")
-        
-    def __eq__(self, other):
-        return isinstance(other, FBASGraphNode) and self.label == other.label
-    
-    def __hash__(self):
-        return hash(self.label)
-    
-    def __str__(self):
-        def pretty_id(i):
-            return hash(i) if isinstance(i, QSet) else i
-        return f"FBASGraphNode({pretty_id(self.label)}, {self.threshold}, {set(pretty_id(c.label) for c in self.children)})"
 
 def freeze_qset(qset: dict) -> Tuple[int, frozenset]:
     """
@@ -87,12 +55,13 @@ class FBASGraph:
             else:
                 if attrs['threshold'] < 0 or attrs['threshold'] > self.graph.out_degree(n):
                     raise ValueError(f"Integrity check failed: threshold of {n} not in [0, out_degree={self.graph.out_degree(n)}]")
-        for v in self.validators:
-            if self.graph.out_degree(v) > 1:
-                raise ValueError(f"Integrity check failed: validator {v} has an out-degree greater than 1 ({self.graph.out_degree(v)})")
-        # for v in self.graph.nodes():
-        #     if n not in self.validators and self.graph.out_degree(n) == 1:
-        #         raise ValueError(f"Integrity check failed:  qset {n} has a single successor")
+        for n in self.graph.nodes():
+            if n in self.validators and self.graph.out_degree(n) > 1:
+                raise ValueError(f"Integrity check failed: validator {n} has an out-degree greater than 1 ({self.graph.out_degree(n)})")
+            if n in self.graph.successors(n):
+                raise ValueError(f"Integrity check failed: node {n} has a self-loop")
+        # check for loops of non-validator nodes:
+        # nvg = self.graph.subgraph(n for n in self.graph.nodes() if n not in self.validators)
                 
     def stats(self):
         """Compute some basic statistics"""
@@ -258,17 +227,28 @@ class FBASGraph:
             else:
                 return
     
+    def is_qset_sat(self, q: Tuple[int, frozenset], s: Collection) -> bool:
+        """
+        Returns True if and only if q's agreement requirements are satisfied by s.
+        """
+        assert set(s) <= self.validators
+        if all(c in self.validators for c in self.graph.successors(q)):
+            assert q not in self.validators
+            assert 'threshold' in self.graph.nodes[q] # canary
+            return self.threshold(q) <= sum(1 for c in self.graph.successors(q) if c in s)
+        else:
+            return self.threshold(q) <= sum(1 for c in self.graph.successors(q) if c not in self.validators and self.is_qset_sat(c , s))
+    
     def is_sat(self, n: Any, s: Collection) -> bool:
         """
         Returns True if and only if n's agreement requirements are satisfied by s.
         """
-        assert s <= self.validators
-        if all(c in self.validators for c in self.graph.successors(n)):
-            assert n not in self.validators and 'threshold' in self.graph.nodes[n] # canary
-            return self.threshold(n) <= sum(1 for c in self.graph.successors(n) if c in s)
+        assert n in self.validators
+        if self.graph.out_degree(n) == 0:
+            return False
         else:
-            return self.threshold(n) <= sum(1 for c in self.graph.successors(n) if self.is_sat(c , s))
-        
+            return self.is_qset_sat(next(self.graph.successors(n)), s)
+
     def qset_nodes(self, n: Any) -> frozenset:
         """
         If n is a qset node, returns the set of graph nodes that form the full qset below n and including n.
@@ -295,7 +275,7 @@ class FBASGraph:
         """
         if not vs:
             return False
-        assert vs <= self.validators
+        assert set(vs) <= self.validators
         return all(self.is_sat(v, vs) for v in vs)
             
     def find_disjoint_quorums(self) -> Optional[tuple[set, set]]:
