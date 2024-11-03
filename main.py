@@ -121,7 +121,6 @@ def main():
                 result = check_intersection(fbas)
                 print(f"Intersection-check result: {result}")
             else:
-                print(args.flatten)
                 result = find_disjoint_quorums(fbas, flatten=args.flatten)
                 print(f"Disjoint quorums: {result}")
         else:

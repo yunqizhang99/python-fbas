@@ -33,8 +33,10 @@ class FBASGraph:
     """
     graph: nx.DiGraph
     validators: set # only a subset of the nodes in the graph represent validators
+    qset_count = 1
+    qsets: dict[str, Tuple[int, frozenset]] # map qset nodes (str) to their data
 
-    def __init__(self, graph=None, validators=None):
+    def __init__(self, graph=None, validators=None, qsets = None):
         if graph is None:
             self.graph = nx.DiGraph()
         else:
@@ -43,7 +45,10 @@ class FBASGraph:
             self.validators = set()
         else:
             self.validators = validators
-
+        if qsets is None:
+            self.qsets = {}
+        else:
+            self.qsets = qsets
 
     def check_integrity(self):
         """Basic integrity checks"""
@@ -97,21 +102,24 @@ class FBASGraph:
             self.graph.add_edge(v, fqs)
         self.validators.add(v)
     
-    def add_qset(self, qset: dict) -> Tuple[int, frozenset]:
+    def add_qset(self, qset: dict) -> str:
         """
         Takes a qset as a JSON-serializable dict in stellarbeat.io format.
         Returns the qset if it already exists, otherwise adds it to the graph.
-        TODO: might have been better to create synthetic qset nodes with unique identifiers and separately track the qset data.
         """
         match qset:
             case {'threshold': t, 'validators': vs, 'innerQuorumSets': iqs}:
-                for iq in iqs:
-                    self.add_qset(iq)
+                fqs = freeze_qset(qset)
+                if fqs in self.qsets.values():
+                    return next(k for k,v in self.qsets.items() if v == fqs)
+                iqs_nodes = [self.add_qset(iq) for iq in iqs]
                 for v in vs:
                     self.add_validator(v)
-                n = freeze_qset(qset)
+                n = "_q" + str(self.qset_count)
+                self.qset_count += 1
+                self.qsets[n] = fqs
                 self.graph.add_node(n, threshold=int(t))
-                for member in n[1]:
+                for member in set(vs) | set(iqs_nodes):
                     self.graph.add_edge(n, member)
                 return n
             case _:
@@ -119,20 +127,20 @@ class FBASGraph:
 
     def __str__(self):
         # number qset nodes from 1 to n:
-        qset_nodes = {n for n in self.graph.nodes() if not n in self.validators}
-        qset_index = {n:i for i,n in enumerate(qset_nodes, 1)}
+        # qset_nodes = {n for n in self.graph.nodes() if not n in self.validators}
+        # qset_index = {n:i for i,n in enumerate(qset_nodes, 1)}
         # logical_validators = {n for n in self.validators if 'logical' in self.graph.nodes[n]}
         # logical_validators_index = {n:i for i,n in enumerate(logical_validators, 1)}
-        def node_repr(n):
-            if n in self.validators:
-                return f"{n}"
+        # def node_repr(n):
+        #     if n in self.validators:
+        #         return f"{n}"
                 # if not 'logical' in self.graph.nodes[n]:
                 #     return f"{n}"
                 # else:
                 #     return f"_l{logical_validators_index[n]}"
-            else:
-                return f"_q{qset_index[n]}"
-        res = {node_repr(n) : f"({t}, {set(map(node_repr, self.graph.successors(n)))})"
+            # else:
+            #     return f"_q{qset_index[n]}"
+        res = {n : f"({t}, {set(self.graph.successors(n))})"
                 for n,t in self.graph.nodes('threshold')}
         return pformat(res)
 
