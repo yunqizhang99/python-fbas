@@ -6,6 +6,7 @@ from python_fbas.fbas_graph import FBASGraph
 def test_collapse():
     data = get_test_data_list()
     for f,d in data.items():
+        logging.info("loading graph of %s", f)
         fg = FBASGraph.from_json(d)
         fg.check_integrity()
         logging.info("graph of %s before flattening:\n %s", f, fg.stats())

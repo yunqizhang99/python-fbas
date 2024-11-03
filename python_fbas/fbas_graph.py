@@ -45,16 +45,23 @@ def freeze_qset(qset: dict) -> Tuple[int, frozenset]:
     """
     Expects a JSON-serializable quorum-set (in stellarbeat.io format) and returns a hashable version for use in collections.
     """
-    threshold = int(qset['threshold'])
-    members = frozenset(qset['validators']) | frozenset(freeze_qset(iq) for iq in qset['innerQuorumSets'])
-    assert 0 <= threshold <= len(members)
-    assert not (threshold == 0 and len(members) > 0)
-    return (threshold, members)
+    match qset:
+        case {'threshold': t, 'validators': vs, 'innerQuorumSets': iqs}:
+            threshold = int(t)
+            members = frozenset(vs) | frozenset(freeze_qset(iq) for iq in iqs)
+            assert 0 <= threshold <= len(members)
+            assert not (threshold == 0 and len(members) > 0)
+            return (threshold, members)
+        case _:
+            raise ValueError(f"Invalid qset: {qset}")
+
 
 class FBASGraph:
     """
     A graph whose nodes are either validators or QSets.
-    Each node has otional attributes: a optional treshold and metadata attibutes
+    If n is a validator node, then it has at most one successor, which is a qset node. If it does not have a successor, then it's because its qset is unknown.
+    If n is a qset node, then it has a threshold attribute and its successors are its validators and inner qsets.
+    Each node has optional metadata attibutes.
     """
     graph: nx.DiGraph
     validators: set # only a subset of the nodes in the graph represent validators
@@ -76,13 +83,13 @@ class FBASGraph:
             raise ValueError(f"Some validators are not in the graph: {self.validators - self.graph.nodes()}")
         for n, attrs in self.graph.nodes(data=True):
             if 'threshold' not in attrs:
-                assert self.graph.out_degree(n) == 1
+                assert self.graph.out_degree(n) <= 1
             else:
-                if attrs['threshold'] < 0 or attrs['threshold'] > len(self.graph.out_degree(n)):
+                if attrs['threshold'] < 0 or attrs['threshold'] > self.graph.out_degree(n):
                     raise ValueError(f"Integrity check failed: threshold of {n} not in [0, out_degree={self.graph.out_degree(n)}]")
         for v in self.validators:
-            if self.graph.out_degree(v) != 1:
-                raise ValueError(f"Integrity check failed: validator {v} has no qset")
+            if self.graph.out_degree(v) > 1:
+                raise ValueError(f"Integrity check failed: validator {v} has an out-degree greater than 1 ({self.graph.out_degree(v)})")
         # for v in self.graph.nodes():
         #     if n not in self.validators and self.graph.out_degree(n) == 1:
         #         raise ValueError(f"Integrity check failed:  qset {n} has a single successor")
@@ -90,21 +97,21 @@ class FBASGraph:
     def stats(self):
         """Compute some basic statistics"""
         def thresholds_distribution():
-            return {t: sum(1 for _, attrs in self.graph.nodes(data=True) if attrs['threshold'] == t)
-                    for t in self.graph.get_node_attributes('threshold').values()}
+            return {t: sum(1 for _, attrs in self.graph.nodes(data=True) if 'threshold' in attrs and attrs['threshold'] == t)
+                    for t in nx.get_node_attributes(self.graph, 'threshold').values()}
         return {
             'num_edges' : len(self.graph.edges()),
             'thresholds_distribution' : thresholds_distribution()
         }
         
     def add_validator(self, v:Any) -> None:
-        """Add a validator to the graph"""
+        """Add a validator to the graph."""
         self.graph.add_node(v)
         self.validators.add(v)
 
     def update_validator(self, v: Any, qset: Optional[dict] = None, attrs: Optional[dict] = None) -> None:
         """
-        Add the validator v to the graph if it does not exist.
+        Add the validator v to the graph if it does not exist, using the supplied qset and attributes.
         Otherwise:
             - Update its attributes with attrs (existing attributes not in attrs remain unchanged).
             - Replace its outgoing edge with an edge to the given qset.
@@ -116,7 +123,8 @@ class FBASGraph:
             self.graph.add_node(v)
         if qset:
             fqs = self.add_qset(qset)
-            self.graph.remove_edges_from(self.graph.out_edges(v))
+            out_edges = list(self.graph.out_edges(v))
+            self.graph.remove_edges_from(out_edges)
             self.graph.add_edge(v, fqs)
         self.validators.add(v)
     
@@ -125,16 +133,19 @@ class FBASGraph:
         Takes a qset as a JSON-serializable dict in stellarbeat.io format.
         Returns the qset if it already exists, otherwise adds it to the graph.
         """
-        for iq in qset['innerQuorumSets']:
-            self.add_qset(iq)
-        vs = qset['validators']
-        for v in vs:
-            self.add_validator(v)
-        n = freeze_qset(qset)
-        self.graph.add_node(n, threshold=n[0])
-        for member in n[1]:
-            self.graph.add_edge(n, member)
-        return n
+        match qset:
+            case {'threshold': t, 'validators': vs, 'innerQuorumSets': iqs}:
+                for iq in iqs:
+                    self.add_qset(iq)
+                for v in vs:
+                    self.add_validator(v)
+                n = freeze_qset(qset)
+                self.graph.add_node(n, threshold=int(t))
+                for member in n[1]:
+                    self.graph.add_edge(n, member)
+                return n
+            case _:
+                raise ValueError(f"Invalid qset: {qset}")
 
     def __str__(self):
         # number qset nodes from 1 to n:
@@ -145,10 +156,23 @@ class FBASGraph:
                 return f"{n}"
             else:
                 return f"q{qset_index[n]}"
-        res = {node_repr(n) : f"({t}, {map(node_repr,self.graph.successors(n))})"
+        res = {node_repr(n) : f"({t}, {list(map(node_repr, self.graph.successors(n)))})"
                 for n,t in self.graph.nodes('threshold')}
         return pformat(res)
 
+    def threshold(self, n: Any) -> int:
+        """
+        Returns the threshold of the given node.
+        """
+        if 'threshold' in self.graph.nodes[n]:
+            return self.graph.nodes[n]['threshold']
+        elif self.graph.out_degree(n) == 1:
+            return 1
+        elif self.graph.out_degree(n) == 0:
+            return -1
+        else:
+            raise ValueError(f"Node {n} has no threshold attribute and out-degree > 1")
+        
     @staticmethod
     def from_json(data : list, from_stellarbeat = False) -> 'FBASGraph':
         """
@@ -186,59 +210,53 @@ class FBASGraph:
         fbas = FBASGraph()
         for v in validators:
             fbas.update_validator(v['publicKey'], v['quorumSet'], v)
+        fbas.check_integrity()
         return fbas
 
     def flatten_diamonds(self) -> None:
         """
-        Roughly speaking, we identify all the "diamonds" in the graph and "flatten" them.
-        This operation preserves quorum intersection.
+        Identify all the "diamonds" in the graph and "flatten" them.
+        A diamond is formed by a qset node show children have no other parent, whose threshold is non-zero and strictly greater than half, and that has a unique grandchild.
+        This operation mutates the FBAS in place.
+        It preserves both quorum intersection and non-intersection.
         """
-        pass
-        # def collapse_diamond(n: FBASGraphNode) -> bool:
-        #     """collapse diamonds with > 1/2 threshold"""
-        #     if not len(n.children) > 1:
-        #         return False
-        #     child = next(iter(n.children))
-        #     if not child.children:
-        #         return False
-        #     grandchild = next(iter(child.children))
-        #     is_diamond = (
-        #         all(self.parents[c] == {n} for c in n.children)
-        #         and all(c.children == set([grandchild]) for c in n.children)
-        #         and 2*n.threshold > len(n.children))
-        #     if is_diamond:
-        #         logging.debug("Collapsing diamond at: %s", n)
-        #         assert n not in self.validators
-        #         self.validators |= set([n])
-        #         for c in n.children:
-        #             del self.parents[c]
-        #         if n != grandchild:
-        #             n.children = set([grandchild])
-        #             n.threshold = 1
-        #             self.parents[grandchild] |= set([n])
-        #         else:
-        #             n.children = set()
-        #             n.threshold = 0
-        #     return is_diamond
+        def collapse_diamond(n: Any) -> bool:
+            """collapse diamonds with > 1/2 threshold"""
+            assert n in self.graph.nodes
+            # condition on threshold:
+            if self.threshold(n) <= 1 or 2*self.threshold(n) < self.graph.out_degree(n)+1:
+                return False
+            # n must be its children's only parent:
+            children = set(self.graph.successors(n))
+            if not all(set(self.graph.predecessors(c)) == {n} for c in children):
+                return False
+            # n must have a unique grandchild:
+            grandchildren = set.union(*[set(self.graph.successors(c)) for c in children])
+            if len(grandchildren) != 1:
+                return False
+            # now collpase the diamond:
+            grandchild = next(iter(grandchildren))
+            logging.debug("Collapsing diamond at: %s", n)
+            assert n not in self.validators # canary
+            # add n to the set of validators:
+            self.validators |= {n}
+            out_edges = list(self.graph.out_edges(n))
+            self.graph.remove_edges_from(out_edges)
+            if n != grandchild:
+                self.graph.add_edge(n, grandchild)
+                self.update_validator(n, attrs={'threshold': 1})
+            else:
+                self.update_validator(n, attrs={'threshold': 0})
+            return True
 
-        # # now collapse nodes until nothing changes:
-        # while True:
-        #     self.check_integrity() # for debugging
-        #     for n in self.nodes:
-        #         if collapse_diamond(n):
-        #             break
-        #     else:
-        #         return
-
-    def threshold(self, n: Any) -> int:
-        """
-        Returns the threshold of the given node.
-        """
-        if 'threshold' in self.graph.nodes[n]:
-            return self.graph.nodes[n]['threshold']
-        else:
-            assert self.graph.out_degree(n) == 1 # canary
-            return 1
+        # now collapse nodes until nothing changes:
+        while True:
+            self.check_integrity() # canary 
+            for n in self.graph.nodes():
+                if collapse_diamond(n):
+                    break
+            else:
+                return
     
     def is_sat(self, n: Any, s: Collection) -> bool:
         """
