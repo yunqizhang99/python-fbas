@@ -61,8 +61,11 @@ class FBASGraph:
                 if attrs['threshold'] < 0 or attrs['threshold'] > self.graph.out_degree(n):
                     raise ValueError(f"Integrity check failed: threshold of {n} not in [0, out_degree={self.graph.out_degree(n)}]")
         for n in self.graph.nodes():
-            if n in self.validators and self.graph.out_degree(n) > 1:
-                raise ValueError(f"Integrity check failed: validator {n} has an out-degree greater than 1 ({self.graph.out_degree(n)})")
+            if n in self.validators:
+                if self.graph.out_degree(n) > 1:
+                    raise ValueError(f"Integrity check failed: validator {n} has an out-degree greater than 1 ({self.graph.out_degree(n)})")
+                if self.graph.out_degree(n) == 1:
+                    assert self.qset_node_of(n) not in self.validators # TODO: do we want this invariant?
             if n in self.graph.successors(n):
                 raise ValueError(f"Integrity check failed: node {n} has a self-loop")
         # check for loops of non-validator nodes:
@@ -202,61 +205,6 @@ class FBASGraph:
             fbas.update_validator(v['publicKey'], v['quorumSet'], v)
         fbas.check_integrity()
         return fbas
-
-    def flatten_diamonds(self) -> None:
-        """
-        Identify all the "diamonds" in the graph and "flatten" them.
-        This creates a new logical validator in place of the diamond, and a 'logical' attribute set to True.
-        A diamond is formed by a qset node show children have no other parent, whose threshold is non-zero and strictly greater than half, and that has a unique grandchild.
-        This operation mutates the FBAS in place.
-        It preserves both quorum intersection and non-intersection.
-        """
-
-        # a counter to create fresh logical validators:
-        count = 1
-
-        def collapse_diamond(n: Any) -> bool:
-            """collapse diamonds with > 1/2 threshold"""
-            nonlocal count
-            assert n in self.graph.nodes
-            # condition on threshold:
-            if self.threshold(n) <= 1 or 2*self.threshold(n) < self.graph.out_degree(n)+1:
-                return False
-            # n must be its children's only parent:
-            children = set(self.graph.successors(n))
-            if not all(set(self.graph.predecessors(c)) == {n} for c in children):
-                return False
-            # n must have a unique grandchild:
-            grandchildren = set.union(*[set(self.graph.successors(c)) for c in children])
-            if len(grandchildren) != 1:
-                return False
-            # now collpase the diamond:
-            grandchild = next(iter(grandchildren))
-            logging.debug("Collapsing diamond at: %s", n)
-            assert n not in self.validators # canary
-            # first remove the node:
-            in_edges = list(self.graph.in_edges(n)) 
-            self.graph.remove_node(n)
-            # now add the new node:
-            new_node = f"_l{count}"
-            count += 1
-            for e in in_edges:
-                self.graph.add_edge(e[0], new_node)
-            if n != grandchild:
-                self.graph.add_edge(new_node, grandchild)
-                self.update_validator(new_node, attrs={'threshold': 1, 'logical': True})
-            else:
-                self.update_validator(new_node, attrs={'threshold': 0, 'logical': True})
-            return True
-
-        # now collapse nodes until nothing changes:
-        while True:
-            for n in self.graph.nodes():
-                if collapse_diamond(n):
-                    self.check_integrity() # canary 
-                    break
-            else:
-                return
     
     def is_qset_sat(self, q: Tuple[int, frozenset], s: Collection) -> bool:
         """
@@ -275,8 +223,8 @@ class FBASGraph:
         Returns True if and only if n's agreement requirements are satisfied by s.
         """
         assert n in self.validators
-        if self.graph.out_degree(n) == 0:
-            return False
+        if self.threshold(n) <= 0:
+            return True
         else:
             return self.is_qset_sat(self.qset_node_of(n), s)
 
@@ -299,6 +247,7 @@ class FBASGraph:
         if not vs:
             return False
         assert set(vs) <= self.validators
+        assert any([self.threshold(v) >= 0 for v in vs]) # we have a qset for at least one validator
         return all(self.is_sat(v, vs) for v in vs)
     
     def find_disjoint_quorums(self) -> Optional[tuple[set, set]]:
@@ -314,7 +263,7 @@ class FBASGraph:
         """
         Returns True if and only if s blocks v.
         """
-        if self.threshold(n) == -1:
+        if self.threshold(n) <= 0:
             return False
         return self.threshold(n) + sum(1 for c in self.graph.successors(n) if c in s) > self.graph.out_degree(n)
     
@@ -329,3 +278,70 @@ class FBASGraph:
             if not new:
                 return frozenset([v for v in closure if v in self.validators])
             closure |= new
+
+    def flatten_diamonds(self) -> None:
+        """
+        Identify all the "diamonds" in the graph and "flatten" them.
+        This creates a new logical validator in place of the diamond, and a 'logical' attribute set to True.
+        A diamond is formed by a qset node show children have no other parent, whose threshold is non-zero and strictly greater than half, and that has a unique grandchild.
+        This operation mutates the FBAS in place.
+        It preserves both quorum intersection and non-intersection.
+
+        NOTE: this is complex and doesn't seem that useful.
+        """
+
+        # a counter to create fresh logical validators:
+        count = 1
+
+        def collapse_diamond(n: Any) -> bool:
+            """collapse diamonds with > 1/2 threshold"""
+            nonlocal count
+            assert n in self.graph.nodes
+            if not all(n in self.validators for n in self.graph.successors(n)):
+                return False
+            # condition on threshold:
+            if self.threshold(n) <= 1 or 2*self.threshold(n) < self.graph.out_degree(n)+1:
+                return False
+            # n must be its children's only parent:
+            children = set(self.graph.successors(n))
+            if not all(set(self.graph.predecessors(c)) == {n} for c in children):
+                return False
+            # n must have a unique grandchild:
+            grandchildren = set.union(*[set(self.graph.successors(c)) for c in children])
+            if len(grandchildren) != 1:
+                return False
+            # now collpase the diamond:
+            grandchild = next(iter(grandchildren))
+            logging.debug("Collapsing diamond at: %s", n)
+            assert n not in self.validators # canary
+            # first remove the node:
+            parents = list(self.graph.predecessors(n))
+            in_edges = [(p, n) for p in parents]
+            self.graph.remove_node(n)
+            # now add the new node:
+            new_node = f"_l{count}"
+            count += 1
+            if n != grandchild:
+                self.graph.add_edge(new_node, grandchild)
+                self.update_validator(new_node, attrs={'threshold': 1, 'logical': True})
+            else:
+                self.update_validator(new_node, attrs={'threshold': 0, 'logical': True})
+            # if some parents are validators, then we need to add a qset node:
+            if any(p in self.validators for p in parents):
+                new_qset = self.add_qset({'threshold': 1, 'validators': [new_node], 'innerQuorumSets': []})
+                for e in in_edges:
+                    self.graph.add_edge(e[0], new_qset)
+            else:
+                for e in in_edges:
+                    self.graph.add_edge(e[0], new_node)
+            return True
+
+        # now collapse nodes until nothing changes:
+        while True:
+            for n in self.graph.nodes():
+                if collapse_diamond(n):
+                    self.check_integrity() # canary 
+                    break
+            else:
+                return
+            
