@@ -35,9 +35,10 @@ def test_is_quorum_2():
         fbas_graph = FBASGraph.from_json(d)
         if fbas_graph.validators:
             for _ in range(100):
-                # pick a random subset of validators:
-                n = random.randint(1, len(fbas_graph.validators))
-                validators = random.sample(list(fbas_graph.validators), n)
+                # pick a random subset of validators for which we have a qset:
+                vs = [v for v in fbas_graph.validators if fbas_graph.threshold(v) > 0]
+                n = random.randint(1, len(vs))
+                validators = random.sample(vs, n)
                 fbas_graph.is_quorum(validators)
 
 def test_is_sat():

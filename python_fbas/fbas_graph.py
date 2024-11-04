@@ -2,27 +2,39 @@
 Federated Byzantine Agreement System (FBAS) represented as graphs.
 """
 
+from dataclasses import dataclass
 from typing import Any, Optional, Tuple
-from collections.abc import Collection
+from collections.abc import Collection, Set
 import logging
 from pprint import pformat
 import networkx as nx
 from python_fbas.utils import powerset
 
-def freeze_qset(qset: dict) -> Tuple[int, frozenset]:
+@dataclass(frozen=True)
+class QSet:
     """
-    Expects a JSON-serializable quorum-set (in stellarbeat.io format) and returns a hashable version for use in collections.
+    Represents a quorum set.
     """
-    match qset:
-        case {'threshold': t, 'validators': vs, 'innerQuorumSets': iqs}:
-            threshold = int(t)
-            members = frozenset(vs) | frozenset(freeze_qset(iq) for iq in iqs)
-            assert 0 <= threshold <= len(members)
-            assert not (threshold == 0 and len(members) > 0)
-            return (threshold, members)
-        case _:
-            raise ValueError(f"Invalid qset: {qset}")
+    threshold: int
+    validators: Set[str]
+    inner_quorum_sets: Set['QSet']
 
+    @staticmethod
+    def make(qset: dict) -> 'QSet':
+        """
+        Expects a JSON-serializable quorum-set (in stellarbeat.io format) and returns a QSet instance.
+        """
+        match qset:
+            case {'threshold': t, 'validators': vs, 'innerQuorumSets': iqs}:
+                threshold = int(t)
+                validators = frozenset(vs)
+                inner_qsets = frozenset(QSet.make(iq) for iq in iqs)
+                card = len(validators | inner_qsets)
+                assert 0 <= threshold <= card
+                assert not (threshold == 0 and card > 0)
+                return QSet(threshold, validators, inner_qsets)
+            case _:
+                raise ValueError(f"Invalid qset: {qset}")
 
 class FBASGraph:
     """
@@ -112,7 +124,7 @@ class FBASGraph:
         """
         match qset:
             case {'threshold': t, 'validators': vs, 'innerQuorumSets': iqs}:
-                fqs = freeze_qset(qset)
+                fqs = QSet.make(qset)
                 if fqs in self.qsets.values():
                     return next(k for k,v in self.qsets.items() if v == fqs)
                 iqs_nodes = [self.add_qset(iq) for iq in iqs]
@@ -129,20 +141,6 @@ class FBASGraph:
                 raise ValueError(f"Invalid qset: {qset}")
 
     def __str__(self):
-        # number qset nodes from 1 to n:
-        # qset_nodes = {n for n in self.graph.nodes() if not n in self.validators}
-        # qset_index = {n:i for i,n in enumerate(qset_nodes, 1)}
-        # logical_validators = {n for n in self.validators if 'logical' in self.graph.nodes[n]}
-        # logical_validators_index = {n:i for i,n in enumerate(logical_validators, 1)}
-        # def node_repr(n):
-        #     if n in self.validators:
-        #         return f"{n}"
-                # if not 'logical' in self.graph.nodes[n]:
-                #     return f"{n}"
-                # else:
-                #     return f"_l{logical_validators_index[n]}"
-            # else:
-            #     return f"_q{qset_index[n]}"
         res = {n : f"({t}, {set(self.graph.successors(n))})"
                 for n,t in self.graph.nodes('threshold')}
         return pformat(res)
@@ -247,7 +245,9 @@ class FBASGraph:
         if not vs:
             return False
         assert set(vs) <= self.validators
-        assert any([self.threshold(v) >= 0 for v in vs]) # we have a qset for at least one validator
+        if not any([self.threshold(v) >= 0 for v in vs]): # we have a qset for at least one validator
+            logging.error("Quorum made of validators which do not have a qset: %s", vs)
+            assert False
         return all(self.is_sat(v, vs) for v in vs)
     
     def find_disjoint_quorums(self) -> Optional[tuple[set, set]]:
