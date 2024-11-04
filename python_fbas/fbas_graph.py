@@ -48,19 +48,10 @@ class FBASGraph:
     qset_count = 1
     qsets: dict[str, Tuple[int, frozenset]] # map qset nodes (str) to their data
 
-    def __init__(self, graph=None, validators=None, qsets = None):
-        if graph is None:
-            self.graph = nx.DiGraph()
-        else:
-            self.graph = graph
-        if validators is None:
-            self.validators = set()
-        else:
-            self.validators = validators
-        if qsets is None:
-            self.qsets = {}
-        else:
-            self.qsets = qsets
+    def __init__(self):
+        self.graph = nx.DiGraph()
+        self.validators = set()
+        self.qsets = dict()
 
     def check_integrity(self):
         """Basic integrity checks"""
@@ -80,9 +71,7 @@ class FBASGraph:
                     assert self.qset_node_of(n) not in self.validators # TODO: do we want this invariant?
             if n in self.graph.successors(n):
                 raise ValueError(f"Integrity check failed: node {n} has a self-loop")
-        # check for loops of non-validator nodes:
-        # nvg = self.graph.subgraph(n for n in self.graph.nodes() if n not in self.validators)
-                
+            
     def stats(self):
         """Compute some basic statistics"""
         def thresholds_distribution():
