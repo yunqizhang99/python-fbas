@@ -5,15 +5,17 @@ A module for representing and working with Federated Byzantine Agreement Systems
 from dataclasses import dataclass
 import logging
 from pprint import pformat
+from functools import lru_cache
 from itertools import combinations, product, islice
 from typing import Any, Optional, Literal
 import networkx as nx
-from .utils import fixpoint
-from functools import lru_cache
+from python_fbas.utils import fixpoint
 
 
 @dataclass(frozen=True)
 class QSet:
+
+    # TODO: might make sense to make this a singleton
 
     """Stellar's so-called quorum sets (which are NOT sets of quorums, but instead represent sets of quorum slices)"""
 
@@ -163,6 +165,7 @@ def qset_intersect(q1: QSet, q2: QSet) -> bool:
     # now check whether every pair of slices intersects:
     return all(s1 & s2 for s1 in ss1 for s2 in ss2)
 
+
 @dataclass
 class FBAS:
     qset_map: dict[Any, QSet]
@@ -224,7 +227,7 @@ class FBAS:
                 logging.warning(
                     "Entry is missing publicKey, skipping: %s", v)
                 continue
-            if 'publicKey' not in v or 'quorumSet' not in v or v['quorumSet'] is None:
+            if 'quorumSet' not in v or v['quorumSet'] is None:
                 logging.warning(
                     "Using empty QSet for validator missing quorumSet: %s", v['publicKey'])
                 v['quorumSet'] = {'threshold': 0,
@@ -253,6 +256,13 @@ class FBAS:
             quorumSet=v.to_json(),
             **self.metadata.get(k, {})
         ) for k, v in self.qset_map.items()]
+    
+    def restrict_to_reachable(self, v):
+        """
+        Returns a new FBAS with only the validators reachable from v.
+        """
+        reachable = nx.descendants(self.to_graph(), v) | {v}
+        return FBAS({k: qs for k, qs in self.qset_map.items() if k in reachable}, self.metadata)
 
     def is_org_structured(self) -> bool:
         """
@@ -385,63 +395,8 @@ class FBAS:
     def splitting_set_bound_heuristic(self):
         pass
 
-    def collapse_qsets(self, new_name=None):
-        """
-        A QSet is collapsible if it can safely be replaced by a single (new) validator without impacting quorum intersection.
-        This method uses a heuristic to identify collapsible QSets and returns a new fbas where all identified QSets have been replaced by a new validator.
-        It might then be easier to check quorum intersection.
-        """
-        logging.info("Collapsing QSets")
-
-        def is_collapsible(qset):
-            res = (
-                # no inner QSets:
-                not qset.inner_qsets
-                # the validators of this QSet do not appear anywhere else:
-                and all(not (qset.validators & qs.validators) for qs in self.all_qsets() if qs != qset)
-                # the validators of this QSet all have the same QSet:
-                and len({self.qset_map[v] for v in qset.validators}) == 1
-                # threshold is greater than half:
-                and 2*qset.threshold > len(qset.validators))
-            if new_name:
-                print(f"qset {new_name(qset)} collapsible: {res}")
-            return res
-        # for each collapsible QSet, create a new validator:
-        collapsible = list(
-            {qs for qs in self.all_qsets() if is_collapsible(qs)})
-        # TODO why is this not a function?
-        validator_of_qset = {
-            qs: new_name(qs)
-            if new_name and new_name(qs) else collapsible.index(qs) for qs in collapsible
-        }
-        if validator_of_qset.values() & self.validators():
-            raise ValueError(
-                "New validators clash with existing validators")
-        # now replace all the collapsible qsets:
-
-        def replace_collapsible(qs):
-            if qs in collapsible:
-                return QSet.make(1, [validator_of_qset[qs]], [])
-            else:
-                return QSet.make(
-                    qs.threshold,
-                    qs.validators | {validator_of_qset[cqs]
-                                     for cqs in qs.inner_qsets & set(collapsible)},
-                    (ncqs for ncqs in qs.inner_qsets if ncqs not in collapsible))
-
-        def qset_of_collapsible(qset):
-            qset_of_members = self.qset_map[next(
-                iter(qset.validators))] if qset.validators else None
-            return (
-                replace_collapsible(qset_of_members)
-                    if qset_of_members not in collapsible
-                else QSet.make(1, [validator_of_qset[qset_of_members]], [])
-            )
-
-        new_qset_map=({v: replace_collapsible(qs) for v, qs in self.qset_map.items()} |
-                        {validator_of_qset[qs]: qset_of_collapsible(qs) for qs in collapsible})
-
-        return FBAS(new_qset_map)
+    def collapse_qsets(self) -> 'FBAS':
+        raise NotImplementedError
    
     def all_have_meta_field(self, field : str) -> bool:
         return all(field in self.metadata[v] for v in self.validators())

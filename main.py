@@ -2,17 +2,25 @@ import json
 import argparse
 import importlib
 import logging
-from python_fbas.sat_based_fbas_analysis import check_intersection, min_splitting_set, min_blocking_set
-from python_fbas.overlay import optimal_overlay, constellation_graph
+from python_fbas.sat_based_fbas_analysis import check_intersection, min_splitting_set, min_blocking_set, is_in_min_quorum_of
+from python_fbas.overlay import optimal_overlay
 from python_fbas.fbas import FBAS
 from python_fbas.fbas_generator import gen_symmetric_fbas
+from python_fbas.fbas_graph import FBASGraph
+from python_fbas.fbas_graph_analysis import find_disjoint_quorums
 
 # TODO: add fast mode
 # TODO: a --viewpoint (everything is subjective in a FBAS!)
 
-def load_fbas_from_file(validators_file):
+def load_fbas_from_file(validators_file, new = False, flatten = False):
     with open(validators_file, 'r', encoding='utf-8') as f:
         validators = json.load(f)
+    if new:
+        fbas = FBASGraph.from_json(validators)
+        if flatten:
+            fbas.flatten_diamonds()
+            return fbas
+        return fbas
     return FBAS.from_json(validators)
 
 def main():
@@ -38,6 +46,8 @@ def main():
     # add --fast option to check-intersection:
     parser_check_intersection.add_argument('--fast', action='store_true', help="Use the fast heuristic")
     parser_check_intersection.add_argument('--validator', help="Public key of the validator from whose viewpoint to check intersection")
+    parser_check_intersection.add_argument('--new', action='store_true', help="Use new codebase")
+    parser_check_intersection.add_argument('--flatten', action='store_true', help="Flatten the graph before checking intersection")
 
     # Command for minimum splitting set
     parser_min_split = subparsers.add_parser('min-splitting-set', help="Find minimal splitting set")
@@ -55,9 +65,22 @@ def main():
     # Add file output option:
     parser_symmetric.add_argument('--output', help="Output file")
 
-    def _load_fbas_from_stellarbeat():
+    # Command taking two validators and checking if one is in the min quorum of the other:
+    parser_is_in_min_quorum_of = subparsers.add_parser('is-in-min-quorum-of', help="Check if one validator is in the min quorum of another")
+    parser_is_in_min_quorum_of.add_argument('validator1', help="Public key of the first validator")
+    parser_is_in_min_quorum_of.add_argument('validator2', help="Public key of the second validator")
+
+    def _load_fbas_from_stellarbeat(new=False, flatten=False):
+        # load dynamically because this triggers fetching data from Stellarbeat
         mod = importlib.import_module('python_fbas.stellarbeat_data')
         mod.get_validators()
+        if new:
+            logging.info("Validators loaded from Stellarbeat")
+            fbas = FBASGraph.from_json(mod.validators)
+            if flatten:
+                fbas.flatten_diamonds()
+                return fbas
+            return fbas
         fbas = FBAS.from_json(mod.validators)
         logging.info("Validators loaded from Stellarbeat")
         logging.info("Sanitizing")
@@ -65,11 +88,11 @@ def main():
         logging.info("Sanitized fbas has %d validators", len(fbas.qset_map))
         return fbas
 
-    def _load_fbas():
+    def _load_fbas(new = False, flatten = False):
         if args.fbas == 'stellarbeat':
-            return _load_fbas_from_stellarbeat()
+            return _load_fbas_from_stellarbeat(new, flatten)
         else:
-            return load_fbas_from_file(args.fbas)
+            return load_fbas_from_file(args.fbas, new, flatten)
 
     # Parse arguments
     args = parser.parse_args()
@@ -89,13 +112,17 @@ def main():
 
     elif args.command == 'check-intersection':
         # --fast require --validator:
-        if args.fast and not args.validator:
-            logging.error("--fast requires --validator")
+        if args.fast and (not args.validator or args.new or args.flatten):
+            logging.error("--fast requires --validator and is incompatible with --new and --flatten")
             exit(1)
-        fbas = _load_fbas()
+        fbas = _load_fbas(args.new)
         if not args.fast:
-            result = check_intersection(fbas)
-            print(f"Intersection-check result: {result}")
+            if not args.new:
+                result = check_intersection(fbas)
+                print(f"Intersection-check result: {result}")
+            else:
+                result = find_disjoint_quorums(fbas, flatten=args.flatten)
+                print(f"Disjoint quorums: {result}")
         else:
             result = fbas.fast_intersection_check(args.validator)
             print(f"Intersection-check result: {result}")
@@ -114,15 +141,13 @@ def main():
         result = optimal_overlay(fbas)
         print(f"Optimal overlay: {result}")
 
-    elif args.command == 'constellation-overlay':
-        fbas = _load_fbas()
-        # parse card encoding as integer:
-        args.card_encoding = int(args.card_encoding)
-        result = constellation_graph(fbas, card_encoding=args.card_encoding)
-        print(f"Constellation overlay: {result}")
-
     elif args.command == 'gen-symmetric-fbas':
         gen_symmetric_fbas(args.n, output=args.output)
+
+    elif args.command == 'is-in-min-quorum-of':
+        fbas = _load_fbas()
+        result = is_in_min_quorum_of(fbas, args.validator1, args.validator2)
+        print(f"Is {args.validator1} ({fbas.metadata[args.validator1]['name']}) in a min quorum of {args.validator2} ({fbas.metadata[args.validator2]['name']})? {result}")
 
     else:
         parser.print_help()

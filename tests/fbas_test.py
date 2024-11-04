@@ -1,5 +1,5 @@
+from test_utils import get_validators_from_test_fbas
 from python_fbas.fbas import QSet, FBAS, qset_intersection_bound
-from test_utils import get_validators_from_test_data_file
 from python_fbas.sat_based_fbas_analysis import check_intersection
 
 q1 = QSet.make(3, [1,2,3,4],[])
@@ -63,10 +63,10 @@ def test_depth():
     assert q2.depth() == 2
 
 def test_stellarbeat():
-    fbas = FBAS.from_json(get_validators_from_test_data_file('validators.json'))
+    fbas = FBAS.from_json(get_validators_from_test_fbas('validators.json'))
     fbas.to_mixed_graph()
     fbas.to_graph()
-    FBAS.from_json(get_validators_from_test_data_file('validators_broken_1.json'))
+    FBAS.from_json(get_validators_from_test_fbas('validators_broken_1.json'))
 
 def test_min_direct_intersection():
     org_a = QSet.make(2, ['a1','a2','a3'],[])
@@ -83,7 +83,7 @@ def test_min_direct_intersection():
     assert qset_intersection_bound(qset_1, qset_2) == 2
     assert qset_intersection_bound(qset_1, qset_3) == 1
     assert qset_intersection_bound(qset_1, qset_4) == 1
-    fbas = FBAS.from_json(get_validators_from_test_data_file('validators.json'))
+    fbas = FBAS.from_json(get_validators_from_test_fbas('validators.json'))
     assert fbas.min_scc_intersection_bound() == 3
 
 def test_is_org_structured():
@@ -107,22 +107,14 @@ def test_weights():
     for (u,v) in g2.edges:
         assert g2[u][v]['weight'] == 1/9
 
-def test_collapse_qsets():
-    collapsed_fbas = fbas1.collapse_qsets()
-    qs = QSet.make(1, [0], [])
-    assert collapsed_fbas == FBAS({1: qs, 2: qs, 3: qs, 4: qs, 0: qs})
-    stellar = FBAS.from_json(get_validators_from_test_data_file('validators.json'))
-    collapsed_stellar = stellar.collapse_qsets(new_name=stellar.org_of_qset)
-    assert 'www.stellar.org' in collapsed_stellar.qset_map.keys()
-
 def test_fast_intersection_1():
-    fbas = FBAS.from_json(get_validators_from_test_data_file('top_tier.json'))
+    fbas = FBAS.from_json(get_validators_from_test_fbas('top_tier.json'))
     sdf2 = "GCM6QMP3DLRPTAZW2UZPCPX2LF3SXWXKPMP3GKFZBDSF3QZGV2G5QSTK"
     assert sdf2 in fbas.qset_map.keys()
     assert fbas.fast_intersection_check(sdf2) == 'true'
 
 def test_fast_intersection_2():
-    fbas2 = FBAS.from_json(get_validators_from_test_data_file('validators.json'))
+    fbas2 = FBAS.from_json(get_validators_from_test_fbas('validators.json'))
     astro1 = "GDMAU3NHV4H7NZF5PY6O6SULIUKIIHPRYOKM7HMREK4BW65VHMDKNM6M"
     assert astro1 in fbas2.qset_map.keys()
     assert fbas2.fast_intersection_check(astro1) == 'true'
@@ -138,7 +130,7 @@ def test_fast_intersection_3():
     assert fbas1.fast_intersection_check(1) == 'true'
 
 def test_fast_intersection_4():
-    conflicted_fbas = FBAS.from_json(get_validators_from_test_data_file('conflicted.json'))
+    conflicted_fbas = FBAS.from_json(get_validators_from_test_fbas('conflicted.json'))
     v11 = 'PK11'
     v23 = 'PK23'
     vx = 'PKX'
@@ -150,14 +142,14 @@ def test_fast_intersection_4():
 
 def test_fast_intersection_5():
     # This is an example wher the fbas is intertwined but the fast heuristic fails to see it
-    circular_fbas = FBAS.from_json(get_validators_from_test_data_file('circular_1.json'))
+    circular_fbas = FBAS.from_json(get_validators_from_test_fbas('circular_1.json'))
     v1 = 'PK1'
     assert circular_fbas.fast_intersection_check(v1) == 'unknown'
     assert check_intersection(circular_fbas) is True
 
 def test_fast_intersection_6():
     # This is an example wher the fbas is intertwined but the fast heuristic fails to see it
-    circular_fbas = FBAS.from_json(get_validators_from_test_data_file('circular_2.json'))
+    circular_fbas = FBAS.from_json(get_validators_from_test_fbas('circular_2.json'))
     v1 = 'PK1'
     assert circular_fbas.fast_intersection_check(v1) == 'unknown'
     assert check_intersection(circular_fbas)
