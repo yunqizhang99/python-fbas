@@ -4,10 +4,17 @@ import random
 from test_utils import get_test_data_list, get_validators_from_test_fbas
 from python_fbas.fbas_graph import FBASGraph
 
+def test_load_fbas():
+    data = get_test_data_list()
+    for f,d in data.items():
+        logging.info("loading fbas %s", f)
+        fg = FBASGraph.from_json(d)
+        fg.check_integrity()
+
 def test_collapse():
     data = get_test_data_list()
     for f,d in data.items():
-        logging.info("loading graph of %s", f)
+        logging.info("loading fbas %s", f)
         fg = FBASGraph.from_json(d)
         fg.check_integrity()
         logging.info("graph of %s before flattening:\n %s", f, fg.stats())
@@ -31,7 +38,7 @@ def test_is_quorum():
 def test_is_quorum_2():
     data = get_test_data_list()
     for f,d in data.items():
-        logging.info("loading graph of %s", f)
+        logging.info("loading fbas of %s", f)
         fbas_graph = FBASGraph.from_json(d)
         if fbas_graph.validators:
             for _ in range(100):
@@ -59,7 +66,7 @@ def test_find_disjoint_quorums():
 def test_closure():
     data = get_test_data_list()
     for f,d in data.items():
-        logging.info("loading graph of %s", f)
+        logging.info("loading fbas of %s", f)
         fbas_graph = FBASGraph.from_json(d)
         if fbas_graph.validators:
             for _ in range(100):

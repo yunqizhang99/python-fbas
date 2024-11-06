@@ -3484,7 +3484,7 @@
           "innerQuorumSets": []
         },
         {
-          "threshold": 2,
+          "threshold": 100,
           "validators": [
             "GBLJNN3AVZZPG2FYAYTYQKECNWTQYYUUY2KVFN2OUKZKBULXIXBZ4FCT",
             "GCIXVKNFPKWVMKJKVK2V4NK7D4TC6W3BUMXSIJ365QUAXWBRPPJXIR2Z",

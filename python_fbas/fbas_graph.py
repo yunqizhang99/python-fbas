@@ -30,8 +30,8 @@ class QSet:
                 validators = frozenset(vs)
                 inner_qsets = frozenset(QSet.make(iq) for iq in iqs)
                 card = len(validators | inner_qsets)
-                assert 0 <= threshold <= card
-                assert not (threshold == 0 and card > 0)
+                if not (0 <= threshold <= card) or (threshold == 0 and card > 0):
+                    raise ValueError(f"Invalid qset: {qset}")
                 return QSet(threshold, validators, inner_qsets)
             case _:
                 raise ValueError(f"Invalid qset: {qset}")
@@ -99,12 +99,16 @@ class FBASGraph:
             self.graph.add_node(v, **attrs)
         else:
             self.graph.add_node(v)
+        self.validators.add(v)
         if qset:
-            fqs = self.add_qset(qset)
+            try:
+                fqs = self.add_qset(qset)
+            except ValueError:
+                logging.warning("Failed to add qset %s for validator %s", qset, v)
+                return
             out_edges = list(self.graph.out_edges(v))
             self.graph.remove_edges_from(out_edges)
             self.graph.add_edge(v, fqs)
-        self.validators.add(v)
     
     def add_qset(self, qset: dict) -> str:
         """
