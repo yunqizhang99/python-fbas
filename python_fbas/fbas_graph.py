@@ -5,6 +5,7 @@ Federated Byzantine Agreement System (FBAS) represented as graphs.
 from dataclasses import dataclass
 from typing import Any, Optional, Tuple
 from collections.abc import Collection, Set
+from itertools import chain, combinations, product
 import logging
 from pprint import pformat
 import networkx as nx
@@ -29,7 +30,7 @@ class QSet:
                 threshold = int(t)
                 validators = frozenset(vs)
                 inner_qsets = frozenset(QSet.make(iq) for iq in iqs)
-                card = len(validators | inner_qsets)
+                card = len(validators) + len(inner_qsets)
                 if not (0 <= threshold <= card) or (threshold == 0 and card > 0):
                     raise ValueError(f"Invalid qset: {qset}")
                 return QSet(threshold, validators, inner_qsets)
@@ -43,10 +44,10 @@ class FBASGraph:
     If n is a qset node, then it has a threshold attribute and its successors are its validators and inner qsets.
     Each node has optional metadata attibutes.
     """
-    graph: nx.DiGraph
-    validators: set # only a subset of the nodes in the graph represent validators
+    graph: nx.DiGraph # nodes are strings
+    validators: set[str] # only a subset of the nodes in the graph represent validators
     qset_count = 1
-    qsets: dict[str, Tuple[int, frozenset]] # map qset nodes (str) to their data
+    qsets: dict[str, Tuple[int, frozenset]] # maps qset nodes (str) to their data
 
     def __init__(self):
         self.graph = nx.DiGraph()
@@ -271,6 +272,39 @@ class FBASGraph:
             if not new:
                 return frozenset([v for v in closure if v in self.validators])
             closure |= new
+
+    def self_intersecting(self, n: str) -> bool:
+        """
+        Whether n is self-interescting
+        """
+        assert n in self.graph
+        if n in self.validators:
+            return True
+        return all(c in self.validators for c in self.graph.successors(n)) \
+            and self.threshold(n) > 0 \
+            and 2*self.threshold(n) > self.graph.out_degree(n)
+        
+    def intersection_bound_heuristic(self, n1: str, n2: str) -> int:
+        """
+        If n1 and n2's children are self-intersecting,
+        then return the mininum number of children in common in two sets that satisfy n1 and n2.
+        """
+        assert n1 in self.graph and n2 in self.graph
+        assert n1 not in self.validators and n2 not in self.validators
+        if all(self.self_intersecting(c)
+               for c in chain(self.graph.successors(n1), self.graph.successors(n2))):
+            o1, o2 = self.graph.out_degree(n1), self.graph.out_degree(n2)
+            t1, t2 = self.threshold(n1), self.threshold(n2)
+            common_children = set(self.graph.successors(n1)) & set(self.graph.successors(n2))
+            c = len(common_children)
+            # worst-case number of common children among t1 children of n1
+            m1 = (t1 + c) - o1
+            # worst-case number of common children among t2 children of n2
+            m2 = (t2 + c) - o2
+            # return worst-case overlap if we pick m1 among c and m2 among c:
+            return max((m1 + m2) - c, 0)
+        else:
+            return 0
 
     def flatten_diamonds(self) -> None:
         """

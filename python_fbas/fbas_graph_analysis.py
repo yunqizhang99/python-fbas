@@ -1,5 +1,7 @@
 """
 SAT-based analysis of FBAS graphs
+
+TODO: Most of the runtime is spent building pysat formulas. Try the Z3 python bindings to see if it's faster.
 """
 
 import logging

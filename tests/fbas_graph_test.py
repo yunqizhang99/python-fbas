@@ -85,3 +85,44 @@ def test_closure_2():
     assert fbas2.closure({'PK11','PK12'}) == {'PK11','PK12','PK13','PKX'}
     assert fbas2.closure({'PKX'}) == {'PKX'}
     assert fbas2.closure({'PK11','PK22'}) == {'PK11','PK22'}
+
+def test_self_intersecing():
+    q1 = {'threshold' : 2, 'validators' : ['PK1','PK2','PK3'], 'innerQuorumSets' : []}
+    fbas = FBASGraph()
+    n1 = fbas.add_qset(q1)
+    assert fbas.self_intersecting(n1)
+    q2 = {'threshold' : 1, 'validators' : ['PK1','PK2','PK3'], 'innerQuorumSets' : []}
+    n2 = fbas.add_qset(q2)
+    assert not fbas.self_intersecting(n2)
+    assert fbas.self_intersecting('PK1')
+    with pytest.raises(AssertionError):
+       fbas.self_intersecting('XXX')
+
+def test_intersection_bound():
+    org_a = {'threshold' : 2, 'validators' : ['a1','a2','a3'], 'innerQuorumSets' : []}
+    org_b = {'threshold' : 2, 'validators' : ['b1','b2','b3'], 'innerQuorumSets' : []}
+    org_c = {'threshold' : 2, 'validators' : ['c1','c2','c3'], 'innerQuorumSets' : []}
+    org_d = {'threshold' : 2, 'validators' : ['d1','d2','d3'], 'innerQuorumSets' : []}
+    org_e = {'threshold' : 2, 'validators' : ['e1','e2','e3'], 'innerQuorumSets' : []}
+    org_f = {'threshold' : 2, 'validators' : ['f1','f2','f3'], 'innerQuorumSets' : []}
+    org_g = {'threshold' : 2, 'validators' : ['g1','g2','g3'], 'innerQuorumSets' : []}
+    qset_1 = {'threshold' : 4, 'validators' : [], 'innerQuorumSets' : [org_a, org_b, org_c, org_d, org_e]}
+    qset_2 = {'threshold' : 4, 'validators' : [], 'innerQuorumSets' : [org_b, org_c, org_d, org_e, org_f]}
+    qset_3 = {'threshold' : 4, 'validators' : [], 'innerQuorumSets' : [org_c, org_d, org_e, org_f, org_g]}
+    qset_4 = {'threshold' : 4, 'validators' : ['x'], 'innerQuorumSets' : [org_c, org_d, org_e, org_f]}
+    fbas = FBASGraph()
+    n1 = fbas.add_qset(qset_1)
+    n2 = fbas.add_qset(qset_2)
+    n3 = fbas.add_qset(qset_3)
+    n4 = fbas.add_qset(qset_4)
+    assert fbas.intersection_bound_heuristic(n1, n2) == 2
+    assert fbas.intersection_bound_heuristic(n1, n3) == 1
+    assert fbas.intersection_bound_heuristic(n1, n4) == 1    
+    q1 = {'threshold' : 2, 'validators' : ['PK1','PK2','PK3'], 'innerQuorumSets' : []}
+    nq1 = fbas.add_qset(q1)
+    q2 = {'threshold' : 2, 'validators' : ['PK1','PK2','PK3'], 'innerQuorumSets' : []}
+    nq2 = fbas.add_qset(q2)
+    q3 = {'threshold' : 1, 'validators' : ['PK1','PK2','PK3'], 'innerQuorumSets' : []}
+    nq3 = fbas.add_qset(q3)
+    assert fbas.intersection_bound_heuristic(nq1, nq2) == 1
+    assert fbas.intersection_bound_heuristic(nq1, nq3) == 0
