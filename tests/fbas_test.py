@@ -1,3 +1,4 @@
+import pytest
 from test_utils import get_validators_from_test_fbas
 from python_fbas.fbas import QSet, FBAS, qset_intersection_bound
 from python_fbas.sat_based_fbas_analysis import check_intersection
@@ -66,7 +67,9 @@ def test_stellarbeat():
     fbas = FBAS.from_json(get_validators_from_test_fbas('validators.json'))
     fbas.to_mixed_graph()
     fbas.to_graph()
-    FBAS.from_json(get_validators_from_test_fbas('validators_broken_1.json'))
+    # this should raise:
+    with pytest.raises(Exception):
+        FBAS.from_json(get_validators_from_test_fbas('validators_broken_1.json'))
 
 def test_min_direct_intersection():
     org_a = QSet.make(2, ['a1','a2','a3'],[])
