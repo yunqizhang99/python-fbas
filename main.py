@@ -7,7 +7,7 @@ from python_fbas.overlay import optimal_overlay
 from python_fbas.fbas import FBAS
 from python_fbas.fbas_generator import gen_symmetric_fbas
 from python_fbas.fbas_graph import FBASGraph
-from python_fbas.fbas_graph_analysis import find_disjoint_quorums
+from python_fbas.z3_fbas_graph_analysis import find_disjoint_quorums
 
 # TODO: add fast mode
 # TODO: a --viewpoint (everything is subjective in a FBAS!)
@@ -121,7 +121,8 @@ def main():
                 result = check_intersection(fbas)
                 print(f"Intersection-check result: {result}")
             else:
-                result = find_disjoint_quorums(fbas, flatten=args.flatten)
+                # result = find_disjoint_quorums(fbas, flatten=args.flatten)
+                result = find_disjoint_quorums(fbas)
                 print(f"Disjoint quorums: {result}")
         else:
             result = fbas.fast_intersection_check(args.validator)

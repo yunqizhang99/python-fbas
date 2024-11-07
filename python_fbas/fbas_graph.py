@@ -306,6 +306,34 @@ class FBASGraph:
         else:
             return 0
 
+    def heuristic_quorum_intersection_check(self, depth: int) -> bool:
+        """
+        Heuristically check whether graph nodes n1 and n2 are intertwined.
+        Must be sound (i.e. does not return true if n1 and n2 are not intertwined) but possibly incomplete.
+        Increase the depth to increase "thoroughness".
+        """
+        # TODO: WIP
+        remaining = \
+            {(v1, v2) for v1, v2 in combinations(self.validators, 2) # why just validators?
+                if self.intersection_bound_heuristic(self.qset_node_of(v1), self.qset_node_of(v2)) == 0}
+        if not remaining:
+            return True
+        for v1, v2 in remaining.copy():
+            q1 = self.qset_node_of(v1)
+            if not self.graph.successors(q1):
+                continue
+            q2 = self.qset_node_of(v2)
+            if not self.graph.successors(q2):
+                continue
+            ss1 = combinations(self.graph.successors(q1), self.threshold(q1))
+            ss2 = combinations(self.graph.successors(q2), self.threshold(q2))
+            for s1, s2 in product(ss1, ss2):
+                if all((e1,e2) in remaining for e1, e2 in product(s1, s2)):
+                    break
+            else:
+                remaining.remove((v1, v2))
+        return not remaining
+
     def flatten_diamonds(self) -> None:
         """
         Identify all the "diamonds" in the graph and "flatten" them.
