@@ -181,7 +181,7 @@ class FBAS:
         for qs in self.all_qsets():
             for v in qs.validators:
                 if v not in self.validators():
-                    logging.warning(
+                    logging.debug(
                         "Validator %s appears in QSet %s but not in the FBAS's key range, "
                         "adding with empty qset",
                         v,
@@ -228,7 +228,7 @@ class FBAS:
                     "Entry is missing publicKey, skipping: %s", v)
                 continue
             if 'quorumSet' not in v or v['quorumSet'] is None:
-                logging.warning(
+                logging.info(
                     "Using empty QSet for validator missing quorumSet: %s", v['publicKey'])
                 v['quorumSet'] = {'threshold': 0,
                                   'validators': [], 'innerQuorumSets': []}
