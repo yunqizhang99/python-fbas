@@ -3,6 +3,7 @@
 #include <stdint.h>
 
 // Generate all partitions of a set using Knuth's Algorithm H
+// TODO: doesn't seem right
 
 uint64_t N = 0; // number of partitions we found
 
@@ -15,7 +16,7 @@ void print_partition(int a[], int n) {
 
 void visit_partition(int a[], int n) {
     N = N + 1;
-    // print_partition(a, n);
+    print_partition(a, n);
 }
 
 void generate_partitions(int n) {
@@ -73,15 +74,16 @@ void generate_partitions(int n) {
     }
 }
 
-// otain n, the cardinality of the set, as first argument:
+// obtain n, the cardinality of the set, as first argument:
 int main(int argc, char *argv[]) {
     if (argc != 2) {
         printf("Usage: %s n\n", argv[0]);
         return 1;
     }
     int n = atoi(argv[1]);
+    printf("WARNING: code probably buggy\n");
     generate_partitions(n);
     // print the number of partitions found:
-    printf("%lu\n", N);
+    printf("%lu partitions found\n", N);
     return 0;
 }
