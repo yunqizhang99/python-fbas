@@ -126,3 +126,34 @@ def test_intersection_bound():
     nq3 = fbas.add_qset(q3)
     assert fbas.intersection_bound_heuristic(nq1, nq2) == 1
     assert fbas.intersection_bound_heuristic(nq1, nq3) == 0
+
+def test_fast_intersection_1():
+    fbas = FBASGraph.from_json(get_validators_from_test_fbas('top_tier.json'))
+    assert fbas.fast_intersection_check() == 'true'
+    fbas2 = FBASGraph.from_json(get_validators_from_test_fbas('validators.json'))
+    assert fbas2.fast_intersection_check() == 'true'
+
+def test_fast_intersection_2():
+    conflicted_fbas = FBASGraph.from_json(get_validators_from_test_fbas('conflicted.json'))
+    v11 = 'PK11'
+    v23 = 'PK23'
+    vx = 'PKX'
+    assert conflicted_fbas.find_disjoint_quorums() # there are disjoint quorums
+    fbas1 = conflicted_fbas.restrict_to_reachable(v11)
+    assert fbas1.fast_intersection_check() == 'true'
+    fbas2 = conflicted_fbas.restrict_to_reachable(v23)
+    assert fbas2.fast_intersection_check() == 'true'
+    fbas3 = conflicted_fbas.restrict_to_reachable(vx)
+    assert fbas3.fast_intersection_check() == 'unknown'
+
+def test_fast_intersection_3():
+    # This is an example where the fbas is intertwined but the fast heuristic fails to see it
+    circular_fbas = FBASGraph.from_json(get_validators_from_test_fbas('circular_1.json'))
+    assert not circular_fbas.find_disjoint_quorums()
+    assert circular_fbas.fast_intersection_check() == 'unknown'
+
+def test_fast_intersection_4():
+    # This is an example where the fbas is intertwined but the fast heuristic fails to see it
+    circular_fbas = FBASGraph.from_json(get_validators_from_test_fbas('circular_2.json'))
+    assert not circular_fbas.find_disjoint_quorums()
+    assert circular_fbas.fast_intersection_check() == 'unknown'

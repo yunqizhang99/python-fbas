@@ -2,8 +2,9 @@
 Federated Byzantine Agreement System (FBAS) represented as graphs.
 """
 
+from copy import copy
 from dataclasses import dataclass
-from typing import Any, Optional, Tuple
+from typing import Any, Literal, Optional, Tuple
 from collections.abc import Collection, Set
 from itertools import chain, combinations, product
 import logging
@@ -54,6 +55,14 @@ class FBASGraph:
         self.validators = set()
         self.qsets = dict()
 
+    def __copy__(self):
+        fbas = FBASGraph()
+        fbas.graph = self.graph.copy()
+        fbas.validators = self.validators.copy()
+        fbas.qset_count = self.qset_count
+        fbas.qsets = self.qsets.copy()
+        return fbas
+
     def check_integrity(self):
         """Basic integrity checks"""
         if not self.validators <= self.graph.nodes():
@@ -65,11 +74,14 @@ class FBASGraph:
                 if attrs['threshold'] < 0 or attrs['threshold'] > self.graph.out_degree(n):
                     raise ValueError(f"Integrity check failed: threshold of {n} not in [0, out_degree={self.graph.out_degree(n)}]")
         for n in self.graph.nodes():
+            if 'threshold' in self.graph.nodes[n]:
+                assert self.graph.nodes[n]['threshold'] >= 0
             if n in self.validators:
                 if self.graph.out_degree(n) > 1:
                     raise ValueError(f"Integrity check failed: validator {n} has an out-degree greater than 1 ({self.graph.out_degree(n)})")
                 if self.graph.out_degree(n) == 1:
-                    assert self.qset_node_of(n) not in self.validators # TODO: do we want this invariant?
+                    assert self.qset_node_of(n) not in self.validators
+                assert 'threshold' not in self.graph.nodes[n]
             if n in self.graph.successors(n):
                 raise ValueError(f"Integrity check failed: node {n} has a self-loop")
             
@@ -97,6 +109,9 @@ class FBASGraph:
         Expects a qset, if given, in JSON-serializable stellarbeat.io format.
         """
         if attrs:
+            # check that 'threshold' is not in attrs, as it's a reserved attribute
+            if 'threshold' in attrs:
+                raise ValueError("'threshold' is reserved and cannot be passed as an attribute")
             self.graph.add_node(v, **attrs)
         else:
             self.graph.add_node(v)
@@ -305,6 +320,56 @@ class FBASGraph:
             return max((m1 + m2) - c, 0)
         else:
             return 0
+        
+    def restrict_to_reachable(self, v: str) -> 'FBASGraph':
+        """
+        Returns a new fbas that only contains what's reachable from v.
+        """
+        reachable = set(nx.descendants(self.graph, v)) | {v}
+        fbas = copy(self)
+        fbas.graph = nx.subgraph(self.graph, reachable)
+        fbas.validators = reachable & self.validators
+        fbas.qsets = {k: v for k, v in self.qsets.items() if k in reachable}
+        return fbas
+    
+    def fast_intersection_check(self) -> Literal['true', 'unknown']:
+        """
+        This is a fast, sound, but incomplete heuristic to check whether all of a FBAS's quorums intersect.
+        It may return 'unknown' even if the property holds but, if it returns 'true', then the property holds.
+        NOTE: ignores validators for which we don't have a qset.
+
+        We use an important properties of FBASs: if a set of validators S is intertwined (meaning all quorums of members of S intersect), then the closure of S is also intertwined.
+        
+        Our strategy is to enumerate intertwined sets in the maximal strongly-connected component and check if their closure covers all validators for which we have a qset (those for which we don't are ignored).
+        """
+        # first obtain a max scc:
+        mscc = max(nx.strongly_connected_components(self.graph), key=len)
+        validators_with_qset = {v for v in self.validators if self.graph.out_degree(v) == 1}
+        mscc_validators = mscc & validators_with_qset
+        # then create a graph over the validators in mscc where there is an edge between v1 and v2 iff their qsets have a non-zero intersection bound
+        g = nx.Graph()
+        for v1, v2 in combinations(mscc_validators, 2):
+            if v1 != v2:
+                q1 = self.qset_node_of(v1)
+                q2 = self.qset_node_of(v2)
+                if self.intersection_bound_heuristic(q1, q2) > 0:
+                    g.add_edge(v1, v2)
+                else:
+                    logging.debug("Non-intertwined max-scc validators: %s and %s", v1, v2)
+        # next, we try to find a clique such that the closure of the clique contains all validators:
+        max_tries = 100
+        cliques = nx.find_cliques(g) # I think this is a generator
+        for _ in range(1,max_tries+1):
+            try:
+                clique = next(cliques)
+            except StopIteration:
+                logging.debug("No clique whose closure covers the validators found")
+                return 'unknown'
+            if  validators_with_qset <= self.closure(clique):
+                return 'true'
+            else:
+                logging.debug("Validators not covered by clique: %s", validators_with_qset - self.closure(clique))
+        return 'unknown'
 
     def flatten_diamonds(self) -> None:
         """
@@ -348,11 +413,9 @@ class FBASGraph:
             # now add the new node:
             new_node = f"_l{count}"
             count += 1
+            self.update_validator(new_node, attrs={'logical': True})
             if n != grandchild:
                 self.graph.add_edge(new_node, grandchild)
-                self.update_validator(new_node, attrs={'threshold': 1, 'logical': True})
-            else:
-                self.update_validator(new_node, attrs={'threshold': 0, 'logical': True})
             # if some parents are validators, then we need to add a qset node:
             if any(p in self.validators for p in parents):
                 new_qset = self.add_qset({'threshold': 1, 'validators': [new_node], 'innerQuorumSets': []})
