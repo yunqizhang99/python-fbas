@@ -77,21 +77,16 @@ int cost(int c[], int v[], int f[], int l) {
 }
 
 int best_cost = INT_MAX;
-int best_cost_all = INT_MAX;
+// int best_cost_all = INT_MAX;
 int invalid = 0;
 void visit_partition(int c[], int v[], int f[], int l) {
     int cst = cost(c, v, f, l);
     if (cst == INT_MAX)
         invalid++;
-    // print_partition(c, v, f, l);
-    // printf("Cost: %d\n", cst);
     if (cst <= best_cost) {
         best_cost = cst;
         print_partition(c, v, f, l);
         printf("Cost: %d\n\n", cst);
-    }
-    if (cst < best_cost_all) {
-        best_cost_all = cst;
     }
 }
 
@@ -137,6 +132,4 @@ int main(int argc, char *argv[]) {
     // next, generate the partitions
     generate_partitions(m, n, visit_partition);
     printf("Best cost appears above\n");
-    printf("Invalid: %d\n", invalid);
-    printf("Best cost including invalid: %d\n", best_cost_all);
 }
