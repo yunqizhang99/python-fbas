@@ -5,9 +5,9 @@ from requests import get
 from platformdirs import user_cache_dir
 
 STELLARBEAT_URL = "https://api.stellarbeat.io/v1/node"
-validators = {} # will be populated with data from stellarbeat at module initialization
+validators = [] # will be populated with data from stellarbeat at module initialization
 
-def _fetch_from_url() -> dict:
+def _fetch_from_url() -> list[dict]:
     """
     Get data from stellarbeat
     """
@@ -15,8 +15,9 @@ def _fetch_from_url() -> dict:
     if response.status_code == 200:
         return response.json()
     response.raise_for_status()
+    raise Exception("Failed to fetch data from Stellarbeat")
 
-def get_validators(update=False) -> dict:
+def get_validators(update=False) -> list[dict]:
     """
     When update is true, fetch new data from stellarbeat and update the file in the cache directory.
     """

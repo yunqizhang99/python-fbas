@@ -9,11 +9,11 @@ from python_fbas.fbas_generator import gen_symmetric_fbas
 from python_fbas.fbas_graph import FBASGraph
 from python_fbas.fbas_graph_analysis import find_disjoint_quorums
 
-def load_json_from_file(validators_file) -> FBAS:
+def load_json_from_file(validators_file):
     with open(validators_file, 'r', encoding='utf-8') as f:
         return json.load(f)
 
-def _load_json_from_stellarbeat() -> dict:
+def _load_json_from_stellarbeat() -> list[dict]:
     # load dynamically because this triggers fetching data from Stellarbeat
     mod = importlib.import_module('python_fbas.stellarbeat_data')
     return mod.get_validators()
@@ -98,6 +98,7 @@ def main():
         mod = importlib.import_module('python_fbas.stellarbeat_data')
         mod.get_validators(update=True)
         logging.info("Cached data updated with fresh data from Stellarbeat")
+        exit(0)
 
     if args.new:
         logging.info("Using the new codebase (fbas_graph.py)")

@@ -14,7 +14,7 @@ from python_fbas.utils import to_cnf
 
 from python_fbas.fbas_graph import FBASGraph
 
-def find_disjoint_quorums(fbas: FBASGraph, solver='cms', flatten=False) -> Optional[Tuple[set, set]]:
+def find_disjoint_quorums(fbas: FBASGraph, solver='cms', flatten=False) -> Optional[Tuple[Collection, Collection]]:
     """
     Try to find two disjoint quorums in the FBAS graph, or prove that they don't exist.
 
