@@ -167,7 +167,7 @@ class FBASGraph:
         else:
             raise ValueError(f"Node {n} has no threshold attribute and out-degree > 1")
     
-    def qset_node_of(self, n: Any) -> tuple[int, frozenset]:
+    def qset_node_of(self, n: Any) -> str:
         """
         Returns the qset node of the given validator node (i.e. its successor).
         """
