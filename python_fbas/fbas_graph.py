@@ -4,9 +4,9 @@ Federated Byzantine Agreement System (FBAS) represented as graphs.
 
 from copy import copy
 from dataclasses import dataclass
-from typing import Any, Literal, Optional, Tuple
+from typing import Any, Literal, Optional
 from collections.abc import Collection, Set
-from itertools import chain, combinations, product
+from itertools import chain, combinations
 import logging
 from pprint import pformat
 import networkx as nx
@@ -48,7 +48,7 @@ class FBASGraph:
     graph: nx.DiGraph # nodes are strings
     validators: set[str] # only a subset of the nodes in the graph represent validators
     qset_count = 1
-    qsets: dict[str, Tuple[int, frozenset]] # maps qset nodes (str) to their data
+    qsets: dict[str, QSet] # maps qset nodes (str) to their data
 
     def __init__(self):
         self.graph = nx.DiGraph()
@@ -213,7 +213,7 @@ class FBASGraph:
         fbas.check_integrity()
         return fbas
     
-    def is_qset_sat(self, q: Tuple[int, frozenset], s: Collection) -> bool:
+    def is_qset_sat(self, q: str, s: Collection) -> bool:
         """
         Returns True if and only if q's agreement requirements are satisfied by s.
         """
