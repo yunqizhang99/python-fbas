@@ -223,17 +223,20 @@ class FBASGraph:
             assert 'threshold' in self.graph.nodes[q] # canary
             return self.threshold(q) <= sum(1 for c in self.graph.successors(q) if c in s)
         else:
-            return self.threshold(q) <= sum(1 for c in self.graph.successors(q) if
-                                            c not in self.validators and self.is_qset_sat(c , s) \
-                                                or c in self.validators and c in s)
+            return self.threshold(q) <= \
+                sum(1 for c in self.graph.successors(q) if
+                    c not in self.validators and self.is_qset_sat(c, s)
+                    or c in self.validators and c in s)
     
     def is_sat(self, n: Any, s: Collection) -> bool:
         """
         Returns True if and only if n's agreement requirements are satisfied by s.
         """
         assert n in self.validators
-        if self.threshold(n) <= 0:
+        if self.threshold(n) == 0:
             return True
+        elif self.threshold(n) < 0:
+            return False
         else:
             return self.is_qset_sat(self.qset_node_of(n), s)
 
@@ -418,6 +421,9 @@ class FBASGraph:
             self.update_validator(new_node, attrs={'logical': True})
             if n != grandchild:
                 self.graph.add_edge(new_node, grandchild)
+            else:
+                empty = self.add_qset({'threshold': 0, 'validators': [], 'innerQuorumSets': []})
+                self.graph.add_edge(new_node, empty)
             # if some parents are validators, then we need to add a qset node:
             if any(p in self.validators for p in parents):
                 new_qset = self.add_qset({'threshold': 1, 'validators': [new_node], 'innerQuorumSets': []})

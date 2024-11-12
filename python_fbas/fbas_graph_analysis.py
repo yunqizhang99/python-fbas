@@ -9,7 +9,7 @@ import time
 from typing import Optional, Tuple, Collection
 from itertools import combinations
 from pysat.solvers import Solver
-from pysat.formula import Or, And, Neg, Atom, Implies, Formula
+from pysat.formula import Or, And, Neg, Atom, Implies, Formula, PYSAT_FALSE, PYSAT_TRUE
 from python_fbas.utils import to_cnf
 
 from python_fbas.fbas_graph import FBASGraph
@@ -29,14 +29,23 @@ def find_disjoint_quorums(fbas: FBASGraph, solver='cms', flatten=False) -> Optio
 
     def in_quorum(q, n):
         return Atom((q, n))
-    
-    def slice_satisfied_by_quorum(s: Collection, q : str) -> list:
-        return [And(*[in_quorum(q, n) for n in s])]
 
     def get_quorum_from_atoms(atoms, q) -> list:
         """Given a list of SAT atoms, return the validators in quorum q."""
         return [a.object[1] for a in atoms
                 if isinstance(a, Atom) and a.object[0] == q and a.object[1] in fbas.validators]
+    
+    def set_in_quorum(s: Collection, q : str) -> Formula:
+        return And(*[in_quorum(q, n) for n in s])
+    
+    def quorum_satisfies_requirements(n: str, q: str) -> Formula:
+        if fbas.threshold(n) > 0:
+            return Or(*[set_in_quorum(s, q)
+                for s in combinations(fbas.graph.successors(n), fbas.threshold(n))])
+        elif fbas.threshold(n) == 0:
+            return And()
+        else:
+            return Or()
 
     if flatten:
         start_time = time.time()
@@ -47,13 +56,12 @@ def find_disjoint_quorums(fbas: FBASGraph, solver='cms', flatten=False) -> Optio
     start_time = time.time()
     constraints : list[Formula] = []
     for q in ['A', 'B']: # our two quorums
-        # q has at least one validator for which we have a qset:
-        constraints += [Or(*[in_quorum(q,v) for v in fbas.validators if fbas.threshold(v) > -1])]
+        # the quorum must be non-empty:
+        constraints += [Or(*[in_quorum(q, n) for n in fbas.validators])]
         # the quorum must satisfy the requirements of each of its members:
         constraints += \
-            [Implies(in_quorum(q, n), Or(*slice_satisfied_by_quorum(s, q)))
-                for n in fbas.graph.nodes() if fbas.threshold(n) > 0
-                for s in combinations(fbas.graph.successors(n), fbas.threshold(n))]
+            [Implies(in_quorum(q, n), quorum_satisfies_requirements(n, q))
+                for n in fbas.graph.nodes()]
     # no validator can be in both quorums:
     for v in fbas.validators:
         constraints += [Neg(And(in_quorum('A', v), in_quorum('B', v)))]
