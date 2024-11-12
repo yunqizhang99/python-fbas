@@ -216,6 +216,7 @@ class FBASGraph:
     def is_qset_sat(self, q: str, s: Collection[str]) -> bool:
         """
         Returns True if and only if q's agreement requirements are satisfied by s.
+        NOTE this is a recursive function and it could blow the stack if the qset graph is very deep.
         """
         assert set(s) <= self.validators
         if all(c in self.validators for c in self.graph.successors(q)):
