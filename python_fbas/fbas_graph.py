@@ -213,7 +213,7 @@ class FBASGraph:
         fbas.check_integrity()
         return fbas
     
-    def is_qset_sat(self, q: str, s: Collection) -> bool:
+    def is_qset_sat(self, q: str, s: Collection[str]) -> bool:
         """
         Returns True if and only if q's agreement requirements are satisfied by s.
         """
@@ -223,7 +223,9 @@ class FBASGraph:
             assert 'threshold' in self.graph.nodes[q] # canary
             return self.threshold(q) <= sum(1 for c in self.graph.successors(q) if c in s)
         else:
-            return self.threshold(q) <= sum(1 for c in self.graph.successors(q) if c not in self.validators and self.is_qset_sat(c , s))
+            return self.threshold(q) <= sum(1 for c in self.graph.successors(q) if
+                                            c not in self.validators and self.is_qset_sat(c , s) \
+                                                or c in self.validators and c in s)
     
     def is_sat(self, n: Any, s: Collection) -> bool:
         """

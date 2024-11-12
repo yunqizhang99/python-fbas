@@ -157,3 +157,17 @@ def test_fast_intersection_4():
     circular_fbas = FBASGraph.from_json(get_validators_from_test_fbas('circular_2.json'))
     assert not circular_fbas.find_disjoint_quorums()
     assert circular_fbas.fast_intersection_check() == 'unknown'
+
+def test_is_qset_sat():
+    q1 = {'threshold' : 2, 'validators' : ['PK1','PK2','PK3'], 'innerQuorumSets' : []}
+    fbas = FBASGraph()
+    n1 = fbas.add_qset(q1)
+    assert fbas.is_qset_sat(n1, {'PK1','PK2'})
+    assert not fbas.is_qset_sat(n1, {'PK1'})
+    q2 = {'threshold' : 3, 'validators' : ['PK3','PK4','PK5'], 'innerQuorumSets' : [
+        {'threshold' : 2, 'validators' : ['PK1','PK2','PK3'], 'innerQuorumSets' : []}
+    ]}
+    n2 = fbas.add_qset(q2)
+    assert not fbas.is_qset_sat(n2, {'PK1','PK2','PK3'})
+    assert fbas.is_qset_sat(n2, {'PK1','PK2','PK3','PK4'})
+    assert not fbas.is_qset_sat(n2, {'PK1','PK2','PK5'})
