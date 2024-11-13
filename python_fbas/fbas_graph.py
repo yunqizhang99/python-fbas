@@ -78,6 +78,8 @@ class FBASGraph:
                 # otherwise, the threshold must be in [0, out_degree]
                 if attrs['threshold'] < 0 or attrs['threshold'] > self.graph.out_degree(n):
                     raise ValueError(f"Integrity check failed: threshold of {n} not in [0, out_degree={self.graph.out_degree(n)}]")
+                if attrs['threshold'] == 0:
+                    assert self.graph.out_degree(n) == 0
             if n in self.validators:
                 # threshold is not explicitly set for validators:
                 assert 'threshold' not in self.graph.nodes[n]
