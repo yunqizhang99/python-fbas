@@ -65,23 +65,28 @@ class FBASGraph:
 
     def check_integrity(self):
         """Basic integrity checks"""
+        # check that all validators are in the graph:
         if not self.validators <= self.graph.nodes():
             raise ValueError(f"Some validators are not in the graph: {self.validators - self.graph.nodes()}")
         for n, attrs in self.graph.nodes(data=True):
+            # a graph node that does not have a threshold attribute must be a validator.
+            # Moreover, it must have at most one successor. The threshold is implicitely 1 if it has 1 successor and implicitely -1 (indicating we do not know its agreeement requirements) if it has no successors; see the threshold method.
             if 'threshold' not in attrs:
+                assert n in self.validators
                 assert self.graph.out_degree(n) <= 1
             else:
+                # otherwise, the threshold must be in [0, out_degree]
                 if attrs['threshold'] < 0 or attrs['threshold'] > self.graph.out_degree(n):
                     raise ValueError(f"Integrity check failed: threshold of {n} not in [0, out_degree={self.graph.out_degree(n)}]")
-        for n in self.graph.nodes():
-            if 'threshold' in self.graph.nodes[n]:
-                assert self.graph.nodes[n]['threshold'] >= 0
             if n in self.validators:
+                # threshold is not explicitly set for validators:
+                assert 'threshold' not in self.graph.nodes[n]
+                # a validator either has one successor (its qset node) or no successors (in case we do not know its agreement requirements):
                 if self.graph.out_degree(n) > 1:
                     raise ValueError(f"Integrity check failed: validator {n} has an out-degree greater than 1 ({self.graph.out_degree(n)})")
+                # a validator's successor must be a qset node:
                 if self.graph.out_degree(n) == 1:
                     assert self.qset_node_of(n) not in self.validators
-                assert 'threshold' not in self.graph.nodes[n]
             if n in self.graph.successors(n):
                 raise ValueError(f"Integrity check failed: node {n} has a self-loop")
             
@@ -163,13 +168,15 @@ class FBASGraph:
         elif self.graph.out_degree(n) == 1:
             return 1
         elif self.graph.out_degree(n) == 0:
+            # we don't know the agreement requirements of this node
             return -1
         else:
             raise ValueError(f"Node {n} has no threshold attribute and out-degree > 1")
     
-    def qset_node_of(self, n: Any) -> str:
+    def qset_node_of(self, n: str) -> str:
         """
-        Returns the qset node of the given validator node (i.e. its successor).
+        n must be a validator node that has a successor.
+        Returns the successor of n, which is supposed to be a qset node.
         """
         assert n in self.validators
         assert self.graph.out_degree(n) == 1
