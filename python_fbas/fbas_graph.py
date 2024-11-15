@@ -40,15 +40,15 @@ class QSet:
 
 class FBASGraph:
     """
-    A graph whose nodes are either validators or QSets.
-    If n is a validator node, then it has at most one successor, which is a qset node. If it does not have a successor, then it's because its qset is unknown.
-    If n is a qset node, then it has a threshold attribute and its successors are its validators and inner qsets.
-    Each node has optional metadata attibutes.
+    A graph whose vertices are either validators or QSets.
+    If n is a validator vertex, then it has at most one successor, which is a qset vertex. If it does not have a successor, then it's because its qset is unknown.
+    If n is a qset vertex, then it has a threshold attribute and its successors are its validators and inner qsets.
+    Each vertex has optional metadata attibutes.
     """
-    graph: nx.DiGraph # nodes are strings
-    validators: set[str] # only a subset of the nodes in the graph represent validators
+    graph: nx.DiGraph # vertices are strings
+    validators: set[str] # only a subset of the vertices in the graph represent validators
     qset_count = 1
-    qsets: dict[str, QSet] # maps qset nodes (str) to their data
+    qsets: dict[str, QSet] # maps qset vertices (str) to their data
 
     def __init__(self):
         self.graph = nx.DiGraph()
@@ -69,7 +69,7 @@ class FBASGraph:
         if not self.validators <= self.graph.nodes():
             raise ValueError(f"Some validators are not in the graph: {self.validators - self.graph.nodes()}")
         for n, attrs in self.graph.nodes(data=True):
-            # a graph node that does not have a threshold attribute must be a validator.
+            # a graph vertex that does not have a threshold attribute must be a validator.
             # Moreover, it must have at most one successor. The threshold is implicitely 1 if it has 1 successor and implicitely -1 (indicating we do not know its agreeement requirements) if it has no successors; see the threshold method.
             if 'threshold' not in attrs:
                 assert n in self.validators
@@ -83,14 +83,16 @@ class FBASGraph:
             if n in self.validators:
                 # threshold is not explicitly set for validators:
                 assert 'threshold' not in self.graph.nodes[n]
-                # a validator either has one successor (its qset node) or no successors (in case we do not know its agreement requirements):
+                # a validator either has one successor (its qset vertex) or no successors (in case we do not know its agreement requirements):
                 if self.graph.out_degree(n) > 1:
                     raise ValueError(f"Integrity check failed: validator {n} has an out-degree greater than 1 ({self.graph.out_degree(n)})")
-                # a validator's successor must be a qset node:
+                # a validator's successor must be a qset vertex:
                 if self.graph.out_degree(n) == 1:
-                    assert self.qset_node_of(n) not in self.validators
+                    assert self.qset_vertex_of(n) not in self.validators
+            else:
+                assert n in self.qsets.keys()
             if n in self.graph.successors(n):
-                raise ValueError(f"Integrity check failed: node {n} has a self-loop")
+                raise ValueError(f"Integrity check failed: vertex {n} has a self-loop")
             
     def stats(self):
         """Compute some basic statistics"""
@@ -143,14 +145,14 @@ class FBASGraph:
                 fqs = QSet.make(qset)
                 if fqs in self.qsets.values():
                     return next(k for k,v in self.qsets.items() if v == fqs)
-                iqs_nodes = [self.add_qset(iq) for iq in iqs]
+                iqs_vertices = [self.add_qset(iq) for iq in iqs]
                 for v in vs:
                     self.add_validator(v)
                 n = "_q" + str(self.qset_count)
                 self.qset_count += 1
                 self.qsets[n] = fqs
                 self.graph.add_node(n, threshold=int(t))
-                for member in set(vs) | set(iqs_nodes):
+                for member in set(vs) | set(iqs_vertices):
                     self.graph.add_edge(n, member)
                 return n
             case _:
@@ -163,22 +165,22 @@ class FBASGraph:
 
     def threshold(self, n: Any) -> int:
         """
-        Returns the threshold of the given node.
+        Returns the threshold of the given vertex.
         """
         if 'threshold' in self.graph.nodes[n]:
             return self.graph.nodes[n]['threshold']
         elif self.graph.out_degree(n) == 1:
             return 1
         elif self.graph.out_degree(n) == 0:
-            # we don't know the agreement requirements of this node
+            # we don't know the threshold associated with this vertex
             return -1
         else:
-            raise ValueError(f"Node {n} has no threshold attribute and out-degree > 1")
+            raise ValueError(f"Vertex {n} has no threshold attribute and out-degree > 1")
     
-    def qset_node_of(self, n: str) -> str:
+    def qset_vertex_of(self, n: str) -> str:
         """
-        n must be a validator node that has a successor.
-        Returns the successor of n, which is supposed to be a qset node.
+        n must be a validator vertex that has a successor.
+        Returns the successor of n, which is supposed to be a qset vertex.
         """
         assert n in self.validators
         assert self.graph.out_degree(n) == 1
@@ -248,19 +250,8 @@ class FBASGraph:
         elif self.threshold(n) < 0:
             return False
         else:
-            return self.is_qset_sat(self.qset_node_of(n), s)
+            return self.is_qset_sat(self.qset_vertex_of(n), s)
 
-    def qset_nodes(self, n: Any) -> frozenset:
-        """
-        If n is a qset node, returns the set of graph nodes that form the full qset below n and including n.
-        Otherwise just return {n}.
-        """
-        assert n in self.graph.nodes
-        if n in self.validators:
-            return frozenset([n])
-        else:
-            return frozenset([n]) | frozenset.union(*[self.qset_nodes(c) for c in self.graph.successors(n)])
-    
     def is_quorum(self, vs: Collection) -> bool:
         """
         Returns True if and only if s is a non-empty quorum.
@@ -365,8 +356,8 @@ class FBASGraph:
         g = nx.Graph()
         for v1, v2 in combinations(mscc_validators, 2):
             if v1 != v2:
-                q1 = self.qset_node_of(v1)
-                q2 = self.qset_node_of(v2)
+                q1 = self.qset_vertex_of(v1)
+                q2 = self.qset_vertex_of(v2)
                 if self.intersection_bound_heuristic(q1, q2) > 0:
                     g.add_edge(v1, v2)
                 else:
@@ -390,7 +381,7 @@ class FBASGraph:
         """
         Identify all the "diamonds" in the graph and "flatten" them.
         This creates a new logical validator in place of the diamond, and a 'logical' attribute set to True.
-        A diamond is formed by a qset node show children have no other parent, whose threshold is non-zero and strictly greater than half, and that has a unique grandchild.
+        A diamond is formed by a qset vertex whose children have no other parent, whose threshold is non-zero and strictly greater than half, and that has a unique grandchild.
         This operation mutates the FBAS in place.
         It preserves both quorum intersection and non-intersection.
 
@@ -421,30 +412,30 @@ class FBASGraph:
             grandchild = next(iter(grandchildren))
             logging.debug("Collapsing diamond at: %s", n)
             assert n not in self.validators # canary
-            # first remove the node:
+            # first remove the vertex:
             parents = list(self.graph.predecessors(n))
             in_edges = [(p, n) for p in parents]
             self.graph.remove_node(n)
-            # now add the new node:
-            new_node = f"_l{count}"
+            # now add the new vertex:
+            new_vertex = f"_l{count}"
             count += 1
-            self.update_validator(new_node, attrs={'logical': True})
+            self.update_validator(new_vertex, attrs={'logical': True})
             if n != grandchild:
-                self.graph.add_edge(new_node, grandchild)
+                self.graph.add_edge(new_vertex, grandchild)
             else:
                 empty = self.add_qset({'threshold': 0, 'validators': [], 'innerQuorumSets': []})
-                self.graph.add_edge(new_node, empty)
-            # if some parents are validators, then we need to add a qset node:
+                self.graph.add_edge(new_vertex, empty)
+            # if some parents are validators, then we need to add a qset vertex:
             if any(p in self.validators for p in parents):
-                new_qset = self.add_qset({'threshold': 1, 'validators': [new_node], 'innerQuorumSets': []})
+                new_qset = self.add_qset({'threshold': 1, 'validators': [new_vertex], 'innerQuorumSets': []})
                 for e in in_edges:
                     self.graph.add_edge(e[0], new_qset)
             else:
                 for e in in_edges:
-                    self.graph.add_edge(e[0], new_node)
+                    self.graph.add_edge(e[0], new_vertex)
             return True
 
-        # now collapse nodes until nothing changes:
+        # now collapse vertices until nothing changes:
         while True:
             for n in self.graph.nodes():
                 if collapse_diamond(n):
