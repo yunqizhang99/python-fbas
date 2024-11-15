@@ -4,16 +4,18 @@ SAT-based analysis of FBAS graphs with Z3
 
 import logging
 import time
-from typing import Optional, Tuple, Collection
+from typing import Collection
 from itertools import combinations
 from z3 import And, Or, Solver, Bool, Not, sat, Implies, BoolRef
 
 from python_fbas.fbas_graph import FBASGraph
 
-def find_disjoint_quorums(fbas: FBASGraph) -> Optional[Tuple[set, set]]:
+def find_disjoint_quorums(fbas: FBASGraph) -> bool:
     """
     Try to find two disjoint quorums in the FBAS graph, or prove that they don't exist.
+    TODO: return the disjoint quorums if found
     """
+    logging.info("Finding disjoint quorums with Z3")
 
     var_count = 0
     variables = {}
@@ -30,23 +32,27 @@ def find_disjoint_quorums(fbas: FBASGraph) -> Optional[Tuple[set, set]]:
             var_count += 1
         return variables[(q, n)]
     
-    def slice_satisfied_by_quorum(s: Collection, q : str) -> list:
-        return [And(*[in_quorum(q, n) for n in s])]
-
-    def get_quorum_from_atoms(atoms, q) -> list:
-        """Given a list of SAT atoms, return the validators in quorum q."""
-        pass
-
+    def set_in_quorum(s: Collection, q : str) -> list:
+        return And(*[in_quorum(q, n) for n in s])
+    
+    def quorum_satisfies_requirements(n: str, q: str) -> BoolRef:
+        if fbas.threshold(n) > 0:
+            return Or(*[set_in_quorum(s, q)
+                for s in combinations(fbas.graph.successors(n), fbas.threshold(n))])
+        elif fbas.threshold(n) == 0:
+            return Bool(True)
+        else:
+            return Bool(False)
+    
     start_time = time.time()
     constraints : list[BoolRef] = []
     for q in ['A', 'B']: # our two quorums
-        # q has at least one validator for which we have a qset:
-        constraints += [Or(*[in_quorum(q,v) for v in fbas.validators if fbas.threshold(v) > -1])]
+        # the quorum must be non-empty:
+        constraints += [Or(*[in_quorum(q, n) for n in fbas.validators])]
         # the quorum must satisfy the requirements of each of its members:
         constraints += \
-            [Implies(in_quorum(q, n), Or(*slice_satisfied_by_quorum(s, q)))
-                for n in fbas.graph.nodes() if fbas.threshold(n) > 0
-                for s in combinations(fbas.graph.successors(n), fbas.threshold(n))]
+            [Implies(in_quorum(q, n), quorum_satisfies_requirements(n, q))
+                for n in fbas.graph.nodes()]
     # no validator can be in both quorums:
     for v in fbas.validators:
         constraints += [Not(And(in_quorum('A', v), in_quorum('B', v)))]
@@ -61,7 +67,6 @@ def find_disjoint_quorums(fbas: FBASGraph) -> Optional[Tuple[set, set]]:
     end_time = time.time()
     logging.info("Solving time: %s", end_time - start_time)
     if res == sat:
-        model = s.model()
         logging.info("Found disjoint quorums")
-        return (set(), set())
-    return None
+        return True
+    return False

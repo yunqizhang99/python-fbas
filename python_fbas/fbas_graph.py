@@ -10,6 +10,7 @@ from itertools import chain, combinations
 import logging
 from pprint import pformat
 import networkx as nx
+from networkx.classes.reportviews import NodeView
 from python_fbas.utils import powerset
 
 @dataclass(frozen=True)
@@ -63,7 +64,7 @@ class FBASGraph:
         fbas.qsets = self.qsets.copy()
         return fbas
     
-    def vertices(self, data=False) -> Collection[str]:
+    def vertices(self, data=False) -> NodeView:
         return self.graph.nodes(data=data)
     
     def vertice_attrs(self, n: str) -> dict:

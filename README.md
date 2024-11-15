@@ -24,13 +24,24 @@ Run:
 python3 main.py
 ```
 
-## Compute a Constellation overlay
-
-To compute an overlay roughly following the Constellation algorithm for the current (9.22.2024) Top Tier:
-
+To check whether the current Stellar network has quorum intersection, first download the latest data from stellarbeat:
 ```
-python3 main.py --fbas=tests/test_data/top_tier.json constellation-overlay
-
+python3 main.py update-stellarbeat-cache
+```
+Then, check intersection with the fast heuristic using the new codebase:
+```
+python3 main.py --log-leve=INFO --new --fbas=stellarbeat check-intersection --fast
+```
+To check intersection using pysat:
+```
+python3 main.py --log-leve=INFO --new --fbas=stellarbeat check-intersection
+```
+Or you can use Z3 instead of pysat:
+```
+python3 main.py --log-leve=INFO --new --fbas=stellarbeat check-intersection --z3
 ```
 
-This will print the list of Constellation clusters (after about 2 minutes on my desktop machine).
+You can also provide a FBAS to check in JSON format:
+```
+python3 main.py --log-leve=INFO --new --fbas=tests/test_data/random/almost_symmetric_network_16_orgs_delete_prob_factor_1.json check-intersection --fast
+```

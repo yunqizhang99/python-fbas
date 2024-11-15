@@ -26,6 +26,7 @@ def find_disjoint_quorums(fbas: FBASGraph, solver='cms', flatten=False) -> Optio
     If the constraints are satisfiable, then we have two disjoint quorums.
     Otherwise, we know that no two disjoint quorums exist.
     """
+    logging.info("Finding disjoint quorums with pysat")
 
     def in_quorum(q, n):
         return Atom((q, n))

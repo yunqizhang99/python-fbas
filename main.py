@@ -8,6 +8,7 @@ from python_fbas.fbas import FBAS
 from python_fbas.fbas_generator import gen_symmetric_fbas
 from python_fbas.fbas_graph import FBASGraph
 from python_fbas.fbas_graph_analysis import find_disjoint_quorums
+from python_fbas.z3_fbas_graph_analysis import find_disjoint_quorums as z3_find_disjoint_quorums
 
 def load_json_from_file(validators_file):
     with open(validators_file, 'r', encoding='utf-8') as f:
@@ -60,6 +61,7 @@ def main():
     parser_check_intersection = subparsers.add_parser('check-intersection', help="Check intersection of quorums")
     # add --fast option to check-intersection:
     parser_check_intersection.add_argument('--fast', action='store_true', help="Use the fast heuristic")
+    parser_check_intersection.add_argument('--z3', action='store_true', help="Use Z3 instead of pysat")
     parser_check_intersection.add_argument('--flatten', action='store_true', help="Flatten the graph before checking intersection")
 
     # Command for minimum splitting set
@@ -106,9 +108,15 @@ def main():
         if args.validator:
             fbas = fbas.restrict_to_reachable(args.validator)
         if args.command == 'check-intersection':
+            if args.fast and args.z3:
+                logging.error("--fast and --z3 are mutually exclusive")
+                exit(1)
             if args.fast:
                 result = fbas.fast_intersection_check()
                 print(f"Intersection-check result: {result}")
+            elif args.z3:
+                result = z3_find_disjoint_quorums(fbas)
+                print(f"Disjoint quorums: {result}")
             else:
                 result = find_disjoint_quorums(fbas, flatten=args.flatten)
                 print(f"Disjoint quorums: {result}")
