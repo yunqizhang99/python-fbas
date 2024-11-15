@@ -48,7 +48,7 @@ class FBASGraph:
     graph: nx.DiGraph # vertices are strings
     validators: set[str] # only a subset of the vertices in the graph represent validators
     qset_count = 1
-    qsets: dict[str, QSet] # maps qset vertices (str) to their data
+    qsets: dict[str, QSet] # maps qset vertices (str) to a description of the associated qset
 
     def __init__(self):
         self.graph = nx.DiGraph()
@@ -346,13 +346,14 @@ class FBASGraph:
     
     def fast_intersection_check(self) -> Literal['true', 'unknown']:
         """
-        This is a fast, sound, but incomplete heuristic to check whether all of a FBAS's quorums intersect.
-        It may return 'unknown' even if the property holds but, if it returns 'true', then the property holds.
-        NOTE: ignores validators for which we don't have a qset.
+        This is a fast, sound, but incomplete heuristic to check whether all of a FBAS's quorums intersect (i.e. is intertwined).
+        It may return 'unknown' even if the FBAS is intertwined (i.e. a false negative), but, if it returns 'true', then the FBAS is guaranteed intertwined (there are no false positives).
+        NOTE: ignores validators for which we don't have a qset (because we don't know what their quorums might be).
 
-        We use an important properties of FBASs: if a set of validators S is intertwined (meaning all quorums of members of S intersect), then the closure of S is also intertwined.
+        We use an important properties of FBASs: if a set of validators S is intertwined, then the closure of S is also intertwined.
+        Thus our strategy is to try to find a small intertwined set whose closure covers all validators.
         
-        Our strategy is to enumerate intertwined sets in the maximal strongly-connected component and check if their closure covers all validators for which we have a qset (those for which we don't are ignored).
+        To find such a set, we look inside the maximal strongly-connected component (the mscc) of the FBAS graph. First, we build a new graph over the validators in the mscc where there is an edge between v1 and v2 when v1 and v2 are intertwined, as computed by a sound but incomplete heuristic. Since the heuristic is sound, we know that any clique in this new graph is an intertwined set.
         """
         # first obtain a max scc:
         mscc = max(nx.strongly_connected_components(self.graph), key=len)
