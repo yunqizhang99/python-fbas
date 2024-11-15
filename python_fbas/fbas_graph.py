@@ -62,13 +62,19 @@ class FBASGraph:
         fbas.qset_count = self.qset_count
         fbas.qsets = self.qsets.copy()
         return fbas
+    
+    def vertices(self, data=False) -> Collection[str]:
+        return self.graph.nodes(data=data)
+    
+    def vertice_attrs(self, n: str) -> dict:
+        return self.graph.nodes[n]
 
     def check_integrity(self):
         """Basic integrity checks"""
         # check that all validators are in the graph:
-        if not self.validators <= self.graph.nodes():
-            raise ValueError(f"Some validators are not in the graph: {self.validators - self.graph.nodes()}")
-        for n, attrs in self.graph.nodes(data=True):
+        if not self.validators <= self.vertices():
+            raise ValueError(f"Some validators are not in the graph: {self.validators - self.vertices()}")
+        for n, attrs in self.vertices(data=True):
             # a graph vertex that does not have a threshold attribute must be a validator.
             # Moreover, it must have at most one successor. The threshold is implicitely 1 if it has 1 successor and implicitely -1 (indicating we do not know its agreeement requirements) if it has no successors; see the threshold method.
             if 'threshold' not in attrs:
@@ -82,7 +88,7 @@ class FBASGraph:
                     assert self.graph.out_degree(n) == 0
             if n in self.validators:
                 # threshold is not explicitly set for validators:
-                assert 'threshold' not in self.graph.nodes[n]
+                assert 'threshold' not in self.vertices()
                 # a validator either has one successor (its qset vertex) or no successors (in case we do not know its agreement requirements):
                 if self.graph.out_degree(n) > 1:
                     raise ValueError(f"Integrity check failed: validator {n} has an out-degree greater than 1 ({self.graph.out_degree(n)})")
@@ -97,7 +103,7 @@ class FBASGraph:
     def stats(self):
         """Compute some basic statistics"""
         def thresholds_distribution():
-            return {t: sum(1 for _, attrs in self.graph.nodes(data=True) if 'threshold' in attrs and attrs['threshold'] == t)
+            return {t: sum(1 for _, attrs in self.vertices(data=True) if 'threshold' in attrs and attrs['threshold'] == t)
                     for t in nx.get_node_attributes(self.graph, 'threshold').values()}
         return {
             'num_edges' : len(self.graph.edges()),
@@ -159,16 +165,16 @@ class FBASGraph:
                 raise ValueError(f"Invalid qset: {qset}")
 
     def __str__(self):
-        res = {n : f"({t}, {set(self.graph.successors(n))})"
-                for n,t in self.graph.nodes('threshold')}
+        res = {n : f"({self.threshold(n)}, {set(self.graph.successors(n))})"
+                for n in self.vertices()}
         return pformat(res)
 
     def threshold(self, n: Any) -> int:
         """
         Returns the threshold of the given vertex.
         """
-        if 'threshold' in self.graph.nodes[n]:
-            return self.graph.nodes[n]['threshold']
+        if 'threshold' in self.vertice_attrs(n):
+            return self.vertice_attrs(n)['threshold']
         elif self.graph.out_degree(n) == 1:
             return 1
         elif self.graph.out_degree(n) == 0:
@@ -232,7 +238,7 @@ class FBASGraph:
         assert set(s) <= self.validators
         if all(c in self.validators for c in self.graph.successors(q)):
             assert q not in self.validators
-            assert 'threshold' in self.graph.nodes[q] # canary
+            assert 'threshold' in self.vertice_attrs(q) # canary
             return self.threshold(q) <= sum(1 for c in self.graph.successors(q) if c in s)
         else:
             return self.threshold(q) <= \
@@ -289,7 +295,7 @@ class FBASGraph:
         assert set(vs) <= self.validators
         closure = set(vs)
         while True:
-            new = {n for n in self.graph.nodes() - closure if self.blocks(closure, n)}
+            new = {n for n in self.vertices() - closure if self.blocks(closure, n)}
             if not new:
                 return frozenset([v for v in closure if v in self.validators])
             closure |= new
@@ -394,7 +400,7 @@ class FBASGraph:
         def collapse_diamond(n: Any) -> bool:
             """collapse diamonds with > 1/2 threshold"""
             nonlocal count
-            assert n in self.graph.nodes
+            assert n in self.vertices()
             if not all(n in self.validators for n in self.graph.successors(n)):
                 return False
             # condition on threshold:
@@ -437,7 +443,7 @@ class FBASGraph:
 
         # now collapse vertices until nothing changes:
         while True:
-            for n in self.graph.nodes():
+            for n in self.vertices():
                 if collapse_diamond(n):
                     self.check_integrity() # canary 
                     break
