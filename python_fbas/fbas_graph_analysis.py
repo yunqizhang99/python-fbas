@@ -5,7 +5,7 @@ SAT-based analysis of FBAS graphs
 import logging
 import time
 from typing import Optional, Tuple, Collection
-from itertools import combinations, product
+from itertools import combinations
 from pysat.solvers import Solver
 from pysat.formula import Or, And, Neg, Atom, Implies, Formula
 from python_fbas.utils import to_cnf

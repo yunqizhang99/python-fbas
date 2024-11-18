@@ -34,14 +34,11 @@ python3 main.py --log-leve=INFO --new --fbas=stellarbeat check-intersection --fa
 ```
 To check intersection using pysat:
 ```
-python3 main.py --log-leve=INFO --new --fbas=stellarbeat check-intersection
+python3 main.py --log-leve=INFO --new --fbas=stellarbeat check-intersection --cnf
 ```
-Or you can use Z3 instead of pysat:
-```
-python3 main.py --log-leve=INFO --new --fbas=stellarbeat check-intersection --z3
-```
+There are other encodings but they are slower (try --z3 and --pysat_fmla)
 
 You can also provide a FBAS to check in JSON format:
 ```
-python3 main.py --log-leve=INFO --new --fbas=tests/test_data/random/almost_symmetric_network_16_orgs_delete_prob_factor_1.json check-intersection --fast
+python3 main.py --log-leve=INFO --new --fbas=tests/test_data/random/almost_symmetric_network_16_orgs_delete_prob_factor_1.json check-intersection --cnf
 ```
