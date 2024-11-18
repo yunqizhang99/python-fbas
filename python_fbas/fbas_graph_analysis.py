@@ -1,15 +1,13 @@
 """
 SAT-based analysis of FBAS graphs
-
-TODO: Most of the runtime is spent building pysat formulas. Try the Z3 python bindings to see if it's faster.
 """
 
 import logging
 import time
 from typing import Optional, Tuple, Collection
-from itertools import combinations
+from itertools import combinations, product
 from pysat.solvers import Solver
-from pysat.formula import Or, And, Neg, Atom, Implies, Formula, PYSAT_FALSE, PYSAT_TRUE
+from pysat.formula import Or, And, Neg, Atom, Implies, Formula
 from python_fbas.utils import to_cnf
 
 from python_fbas.fbas_graph import FBASGraph
@@ -25,6 +23,11 @@ def find_disjoint_quorums(fbas: FBASGraph, solver='cms', flatten=False) -> Optio
     Finally we assert that no validator is in both quorums, and we check for satisfiability.
     If the constraints are satisfiable, then we have two disjoint quorums.
     Otherwise, we know that no two disjoint quorums exist.
+
+    TODO: This is slow due to the way pysat builds formulas (most of the time is spent building string representations of formulas for hashing...).
+    We could try our own CNF encoding.
+    
+    TODO: seems like a manual encoding following the totalizer encoding would be good.
     """
     logging.info("Finding disjoint quorums with pysat")
 
@@ -89,3 +92,69 @@ def find_disjoint_quorums(fbas: FBASGraph, solver='cms', flatten=False) -> Optio
         assert not set(q1) & set(q2)
         return (q1, q2)
     return None
+
+def find_disjoint_quorums_cnf(fbas: FBASGraph, solver='cms') ->  Optional[Tuple[Collection, Collection]]:
+    """
+    Try to find two disjoint quorums in the FBAS graph, or prove that they don't exist. Directly generate the CNF formula.
+    """
+
+    start_time = time.time()
+    clauses: list[list[int]] = []
+
+    # first, we create two variables per vertex:
+    # ('A',v) indicates whether v is in quorum A
+    # ('B',v) indicates whether v is in quorum B
+    pair_to_int = {}
+    int_to_pair = {}
+    next_int = 1
+    logging.debug("number of vertices: %s", len(fbas.vertices()))
+    for q in ['A', 'B']:
+        for v in fbas.vertices():
+            pair_to_int[(q, v)] = next_int
+            int_to_pair[next_int] = (q, v)
+            next_int += 1
+    logging.debug("finished creating variables")
+
+    for q in ['A', 'B']:
+        # first, we create a clause asserting that the quorum contains at least one validator:
+        clauses.append([pair_to_int[(q, v)] for v in fbas.validators])
+        # then, we add the threshold constraints:
+        for v in fbas.vertices():
+            if fbas.threshold(v) > 0:
+                # TODO: this seems correct but is way too slow (exponential!); better do Tseitin...
+                logging.debug("Threshold of %s is %s out of %s", v, fbas.threshold(v), fbas.graph.out_degree(v))
+                children_vars = [pair_to_int[(q, u)] for u in fbas.graph.successors(v)]
+                card_t_sets = combinations(children_vars, fbas.threshold(v))
+                card_t_clauses = product(*card_t_sets)
+                for clause in card_t_clauses:
+                    clauses.append(list(set(clause)) + [-pair_to_int[(q,v)]])
+            if fbas.threshold(v) < 0: # validators for which we don't have a threshold cannot be in the quorum:
+                clauses.append([-pair_to_int[(q, v)]])
+    # finally, we add the constraint that no validator can be in both quorums:
+    for v in fbas.validators:
+        clauses.append([-pair_to_int[('A', v)], -pair_to_int[('B', v)]])
+    end_time = time.time()
+    logging.info("Constraint-building time: %s", end_time - start_time)
+
+    # now call the solver:
+    s = Solver(name=solver)
+    s = Solver(bootstrap_with=clauses, name=solver)
+    start_time = time.time()
+    res = s.solve()
+    end_time = time.time()
+    logging.info("Solving time: %s", end_time - start_time)
+    if not res:
+        return None
+    else:
+        print("Found disjoint quorums!")
+        model = s.get_model()
+        def get_quorum(q):
+            return [int_to_pair[i][1] for i in model
+                        if i in int_to_pair.keys() \
+                            and int_to_pair[i][0] == q \
+                            and int_to_pair[i][1] in fbas.validators]
+        q1 = get_quorum('A')
+        q2 = get_quorum('B')
+        logging.info("Quorum A: %s", q1)
+        logging.info("Quorum B: %s", q2)
+        return (q1, q2)
