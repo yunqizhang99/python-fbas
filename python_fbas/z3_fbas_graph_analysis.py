@@ -6,7 +6,7 @@ import logging
 import time
 from typing import Collection
 from itertools import combinations
-from z3 import And, Or, Solver, Bool, Not, sat, Implies, BoolRef
+from z3 import And, Or, Solver, Bool, Not, sat, Implies, BoolRef, BoolVal
 
 from python_fbas.fbas_graph import FBASGraph
 
@@ -40,9 +40,9 @@ def find_disjoint_quorums(fbas: FBASGraph) -> bool:
             return Or(*[set_in_quorum(s, q)
                 for s in combinations(fbas.graph.successors(n), fbas.threshold(n))])
         elif fbas.threshold(n) == 0:
-            return Bool(True)
+            return BoolVal(True)
         else:
-            return Bool(False)
+            return BoolVal(False)
     
     start_time = time.time()
     constraints : list[BoolRef] = []
@@ -68,5 +68,9 @@ def find_disjoint_quorums(fbas: FBASGraph) -> bool:
     logging.info("Solving time: %s", end_time - start_time)
     if res == sat:
         logging.info("Found disjoint quorums")
+        q1 = [n for n in fbas.validators if s.model()[in_quorum('A', n)]]
+        q2 = [n for n in fbas.validators if s.model()[in_quorum('B', n)]]
+        logging.info("Quorum A: %s", q1)
+        logging.info("Quorum B: %s", q2)
         return True
     return False

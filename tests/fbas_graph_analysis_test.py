@@ -12,7 +12,7 @@ def test_quorum_intersection():
     fbas2 = FBASGraph.from_json(get_validators_from_test_fbas('conflicted.json'))
     assert find_disjoint_quorums(fbas2)
 
-def test_quorum_intersection_z3_1():
+def test_quorum_intersection_z3():
     fbas = FBASGraph.from_json(get_validators_from_test_fbas('circular_1.json'))
     assert not z3_find_disjoint_quorums(fbas)
     fbas3 = FBASGraph.from_json(get_validators_from_test_fbas('circular_2.json'))
@@ -59,6 +59,14 @@ def test_compare():
         fbas_graph = FBASGraph.from_json(d)
         if fbas_graph.validators:
             assert (not find_disjoint_quorums(fbas_graph)) == (not find_disjoint_quorums_cnf(fbas_graph))
+
+def test_compare_z3():
+    data = get_test_data_list()
+    for f,d in data.items():
+        logging.info("loading graph of %s", f)
+        fbas_graph = FBASGraph.from_json(d)
+        if fbas_graph.validators:
+            assert (not find_disjoint_quorums(fbas_graph)) == (not z3_find_disjoint_quorums(fbas_graph))
 
 def test_quorum_intersection_3():
     data = get_test_data_list()
