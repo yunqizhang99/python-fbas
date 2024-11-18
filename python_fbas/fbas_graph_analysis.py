@@ -69,9 +69,12 @@ def find_disjoint_quorums(fbas: FBASGraph, solver='cms', flatten=False) -> Optio
     # no validator can be in both quorums:
     for v in fbas.validators:
         constraints += [Neg(And(in_quorum('A', v), in_quorum('B', v)))]
-    clauses = to_cnf(constraints)
     end_time = time.time()
     logging.info("Constraint-building time: %s", end_time - start_time)
+    start_time = time.time()
+    clauses = to_cnf(constraints)
+    end_time = time.time()
+    logging.info("Time to convert to CNF: %s", end_time - start_time)
 
     # now call the solver:
     s = Solver(bootstrap_with=clauses, name=solver)
@@ -93,27 +96,55 @@ def find_disjoint_quorums(fbas: FBASGraph, solver='cms', flatten=False) -> Optio
         return (q1, q2)
     return None
 
-def find_disjoint_quorums_cnf(fbas: FBASGraph, solver='cms') ->  Optional[Tuple[Collection, Collection]]:
+def find_disjoint_quorums_cnf(fbas: FBASGraph, solver='cms', flatten=False) ->  Optional[Tuple[Collection, Collection]]:
     """
     Try to find two disjoint quorums in the FBAS graph, or prove that they don't exist. Directly generate the CNF formula.
     """
+    logging.info("Finding disjoint quorums with solver %s (producing CNF directly)", solver)
+
+    if flatten:
+        fbas.flatten_diamonds()
 
     start_time = time.time()
+
+    # integer counter used to create new variables:
+    next_int = 1
+    # the clauses of the CNF formula:
     clauses: list[list[int]] = []
+
+    def card_constraint_to_cnf(vs: Collection[int], threshold: int) -> list[list[int]]:
+        """
+        Given a set of variables vs, create a CNF formula that enforces that at least threshold of them are true.
+        The last clauses is the "top-level" clause of the logical circuit.
+
+        TODO: try the totalizer encoding.
+        """
+        nonlocal next_int
+        clauses:list[list[int]] = []
+        card_t_sets = list(combinations(vs, threshold))
+        # we create len(card_t_sets) auxiliary variables, one for each set:
+        for i, card_t_set in enumerate(card_t_sets):
+            # the conjunction of the elements in the set implies the set's variable:
+            clauses.append([-v for v in card_t_set] + [next_int+i])
+            # for each element in the set, the set's variable implies the element:
+            for v in card_t_set:
+                clauses.append([-(next_int+i), v])
+        # finally, add the top-level disjuntion:
+        clauses.append([next_int + i for i in range(len(card_t_sets))])
+        # update next_int:
+        next_int += len(card_t_sets)
+        return clauses
 
     # first, we create two variables per vertex:
     # ('A',v) indicates whether v is in quorum A
     # ('B',v) indicates whether v is in quorum B
     pair_to_int = {}
     int_to_pair = {}
-    next_int = 1
-    logging.debug("number of vertices: %s", len(fbas.vertices()))
     for q in ['A', 'B']:
         for v in fbas.vertices():
             pair_to_int[(q, v)] = next_int
             int_to_pair[next_int] = (q, v)
             next_int += 1
-    logging.debug("finished creating variables")
 
     for q in ['A', 'B']:
         # first, we create a clause asserting that the quorum contains at least one validator:
@@ -121,18 +152,18 @@ def find_disjoint_quorums_cnf(fbas: FBASGraph, solver='cms') ->  Optional[Tuple[
         # then, we add the threshold constraints:
         for v in fbas.vertices():
             if fbas.threshold(v) > 0:
-                # TODO: this seems correct but is way too slow (exponential!); better do Tseitin...
-                logging.debug("Threshold of %s is %s out of %s", v, fbas.threshold(v), fbas.graph.out_degree(v))
-                children_vars = [pair_to_int[(q, u)] for u in fbas.graph.successors(v)]
-                card_t_sets = combinations(children_vars, fbas.threshold(v))
-                card_t_clauses = product(*card_t_sets)
-                for clause in card_t_clauses:
-                    clauses.append(list(set(clause)) + [-pair_to_int[(q,v)]])
+                vs = [pair_to_int[(q, n)] for n in fbas.graph.successors(v)]
+                card_clauses = card_constraint_to_cnf(vs, fbas.threshold(v))
+                # add all but the last clause:
+                clauses += card_clauses[:-1]
+                # the current variable implies the cardinality constraint:
+                clauses.append(card_clauses[-1] + [-pair_to_int[(q, v)]])
             if fbas.threshold(v) < 0: # validators for which we don't have a threshold cannot be in the quorum:
                 clauses.append([-pair_to_int[(q, v)]])
     # finally, we add the constraint that no validator can be in both quorums:
     for v in fbas.validators:
         clauses.append([-pair_to_int[('A', v)], -pair_to_int[('B', v)]])
+
     end_time = time.time()
     logging.info("Constraint-building time: %s", end_time - start_time)
 

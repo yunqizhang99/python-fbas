@@ -7,7 +7,7 @@ from python_fbas.overlay import optimal_overlay
 from python_fbas.fbas import FBAS
 from python_fbas.fbas_generator import gen_symmetric_fbas
 from python_fbas.fbas_graph import FBASGraph
-from python_fbas.fbas_graph_analysis import find_disjoint_quorums
+from python_fbas.fbas_graph_analysis import find_disjoint_quorums_cnf, find_disjoint_quorums
 from python_fbas.z3_fbas_graph_analysis import find_disjoint_quorums as z3_find_disjoint_quorums
 
 def load_json_from_file(validators_file):
@@ -61,6 +61,8 @@ def main():
     parser_check_intersection = subparsers.add_parser('check-intersection', help="Check intersection of quorums")
     # add --fast option to check-intersection:
     parser_check_intersection.add_argument('--fast', action='store_true', help="Use the fast heuristic")
+    parser_check_intersection.add_argument('--pysat_fmla', action='store_true', help="Build pysat Formlas (slow)")
+    parser_check_intersection.add_argument('--cnf', action='store_true', help="Directly create a CNF constraint")
     parser_check_intersection.add_argument('--z3', action='store_true', help="Use Z3 instead of pysat")
     parser_check_intersection.add_argument('--flatten', action='store_true', help="Flatten the graph before checking intersection")
 
@@ -108,8 +110,9 @@ def main():
         if args.validator:
             fbas = fbas.restrict_to_reachable(args.validator)
         if args.command == 'check-intersection':
-            if args.fast and args.z3:
-                logging.error("--fast and --z3 are mutually exclusive")
+            # fast, z3, cnf, and pysat are mutually exclusive:
+            if sum([args.fast, args.z3, args.cnf, args.pysat_fmla]) > 1:
+                logging.error("--fast, --z3, --cnf, and --pysat-fmla are mutually exclusive")
                 exit(1)
             if args.fast:
                 result = fbas.fast_intersection_check()
@@ -117,9 +120,15 @@ def main():
             elif args.z3:
                 result = z3_find_disjoint_quorums(fbas)
                 print(f"Disjoint quorums: {result}")
-            else:
+            elif args.cnf:
+                result = find_disjoint_quorums_cnf(fbas, flatten=args.flatten)
+                print(f"Disjoint quorums: {result}")
+            elif args.pysat_fmla:
                 result = find_disjoint_quorums(fbas, flatten=args.flatten)
                 print(f"Disjoint quorums: {result}")
+            else:
+                logging.error("Must specify one of --fast, --z3, --cnf, or --pysat-fmla")
+                exit(1)
         else:
             print("Command not supported with the new codebase")
             parser.print_help()
