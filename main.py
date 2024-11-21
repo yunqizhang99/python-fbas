@@ -68,7 +68,7 @@ def main():
     parser_check_intersection.add_argument('--flatten', action='store_true', help="Flatten the graph before checking intersection")
 
     # Command for minimum splitting set
-    parser_min_split = subparsers.add_parser('min-splitting-set', help="Find minimal splitting set")
+    parser_min_split = subparsers.add_parser('min-splitting-set', help="Find minimal-cardinality splitting set")
 
     # Command for minimum blocking set
     parser_min_block = subparsers.add_parser('min-blocking-set', help="Find minimal blocking set")
@@ -136,7 +136,7 @@ def main():
                 exit(1)
         elif args.command == 'min-splitting-set':
             result = find_minimal_splitting_set(fbas, card_encoding='totalizer' if args.totalizer else 'naive')
-            print(f"Minimal splitting set: {result}")
+            print(f"Minimal-cardinality splitting set: {result}")
         else:
             print("Command not supported with the new codebase")
             parser.print_help()

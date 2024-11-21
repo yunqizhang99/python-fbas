@@ -82,7 +82,8 @@ def find_disjoint_quorums(fbas: FBASGraph, solver='cryptominisat5', flatten:bool
     logging.info("Finding disjoint quorums with solver %s", solver)
 
     if flatten:
-        fbas.flatten_diamonds() # this is not very useful
+        logging.error("Flattening is not supported with the new codebase")
+        exit(1)
 
     start_time = time.time()
 
@@ -144,7 +145,11 @@ def find_disjoint_quorums(fbas: FBASGraph, solver='cryptominisat5', flatten:bool
         return (q1, q2)
     
 def find_minimal_splitting_set(fbas: FBASGraph, card_encoding:Literal['naive','totalizer']='naive') ->  Optional[Collection]:
-    logging.info(f"Finding minimal splitting set using MaxSAT with {card_encoding} cardinality encoding")
+    logging.info(f"Finding minimal-cardinality splitting set using MaxSAT with {card_encoding} cardinality encoding")
+
+    # TODO: this could help, but it's tricky... in the maxsat problem, the logical validators should be assigned a weight corresponding to what they represent.
+    # this will require tracking this in flatten_diamonds, and then using this information here.
+    # fbas.flatten_diamonds()
 
     start_time = time.time()
 
@@ -219,10 +224,10 @@ def find_minimal_splitting_set(fbas: FBASGraph, card_encoding:Literal['naive','t
         print("No splitting set found!")
         return None
     else:
-        print(f"Found minimal splitting set of size {s.cost}")
+        print(f"Found minimal-cardinality splitting set, size is {s.cost}")
         model = list(s.model)
         ss = [is_faulty_vars_inverse[i] for i in model if i in is_faulty_vars_inverse.keys()]
-        logging.info("Minimal splitting set: %s", ss)
+        logging.info("Minimal-cardinality splitting set: %s", ss)
         q1 = get_quorum('A', model)
         q2 = get_quorum('B', model)
         logging.info("Quorum A: %s", q1)
