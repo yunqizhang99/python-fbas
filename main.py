@@ -47,6 +47,7 @@ def main():
 
 
     parser.add_argument('--new', action='store_true', help="Whether to use the new codebase")
+    parser.add_argument('--totalizer', action='store_true', help="Whether to use the totalizer cardinality encoding")
 
     # specify whether to group validators by some metadata field:
     parser.add_argument('--group-by', default=None, help="Group validators using the provided metadata field (e.g. 'homeDomain')")
@@ -114,6 +115,10 @@ def main():
             if sum([args.fast, args.z3, args.cnf, args.pysat_fmla]) > 1:
                 logging.error("--fast, --z3, --cnf, and --pysat-fmla are mutually exclusive")
                 exit(1)
+            # totalizer only applies to cnf:
+            if args.totalizer and not args.cnf:
+                logging.error("--totalizer only applies to --cnf")
+                exit(1)
             if args.fast:
                 result = fbas.fast_intersection_check()
                 print(f"Intersection-check result: {result}")
@@ -121,7 +126,7 @@ def main():
                 result = z3_find_disjoint_quorums(fbas)
                 print(f"Disjoint quorums: {result}")
             elif args.cnf:
-                result = find_disjoint_quorums(fbas, flatten=args.flatten)
+                result = find_disjoint_quorums(fbas, flatten=args.flatten, card_encoding='totalizer' if args.totalizer else 'naive')
                 print(f"Disjoint quorums: {result}")
             elif args.pysat_fmla:
                 result = find_disjoint_quorums_using_pysat_fmla(fbas, flatten=args.flatten)
@@ -130,7 +135,7 @@ def main():
                 logging.error("Must specify one of --fast, --z3, --cnf, or --pysat-fmla")
                 exit(1)
         elif args.command == 'min-splitting-set':
-            result = find_minimal_splitting_set(fbas)
+            result = find_minimal_splitting_set(fbas, card_encoding='totalizer' if args.totalizer else 'naive')
             print(f"Minimal splitting set: {result}")
         else:
             print("Command not supported with the new codebase")

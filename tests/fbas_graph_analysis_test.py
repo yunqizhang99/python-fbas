@@ -66,7 +66,7 @@ def test_compare_z3():
         logging.info("loading graph of %s", f)
         fbas_graph = FBASGraph.from_json(d)
         if fbas_graph.validators:
-            assert (not find_disjoint_quorums_using_pysat_fmla(fbas_graph)) == (not z3_find_disjoint_quorums(fbas_graph))
+            assert (not find_disjoint_quorums(fbas_graph)) == (not z3_find_disjoint_quorums(fbas_graph))
 
 def test_quorum_intersection_3():
     data = get_test_data_list()

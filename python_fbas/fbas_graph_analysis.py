@@ -4,7 +4,7 @@ SAT-based analysis of FBAS graphs
 
 import logging
 import time
-from typing import Optional, Tuple, Collection
+from typing import Any, Literal, Optional, Tuple, Collection
 from itertools import combinations
 from pysat.solvers import Solver
 from pysat.examples.lsu import LSU # MaxSAT algorithm
@@ -34,28 +34,40 @@ def dnf_to_cnf(dnf: list[list[int]]) -> list[list[int]]:
     next_int += len(dnf)
     return clauses
 
-def card_constraint_to_cnf(vs: Collection[int], threshold: int) -> list[list[int]]:
+def card_constraint_to_cnf(ante: list[int], vs: Collection[int], threshold: int, card_encoding:Literal['naive','totalizer']='naive') -> list[list[int]]:
     """
-    Given a set of variables vs, create a CNF formula that enforces that at least `threshold` of them are true.
+    Given a set of variables vs, create a CNF formula that enforces that, if all vars in ante are true, then at least threshold variable in vs are true.
+    """
+    assert card_encoding in ['naive', 'totalizer']
+    if card_encoding == 'naive':
+        return card_constraint_to_cnf_naive(ante, vs, threshold)
+    return card_constraint_to_cnf_totalizer(ante, vs, threshold)
+    
+def card_constraint_to_cnf_naive(ante: list[int], vs: Collection[int], threshold: int) -> list[list[int]]:
+    """
+    Given a set of variables vs, create a CNF formula that enforces that, if all vars in ante are true, then at least threshold variable in vs are true.
     As a propositional formula, this is a disjuntion of conjunctions (e.g. 2 out of 3 is (x1 and x2) or (x1 and x3) or (x2 and x3)).
-    The last clause in the returned list is the clause that enforces the cardinality constraint. 
     """
     terms = [list(conj) for conj in combinations(vs, threshold)]
-    return dnf_to_cnf(terms)
+    return [c+[-a for a in ante] for c in dnf_to_cnf(terms)]
 
-def card_constraint_to_cnf_totalizer(vs: Collection[int], threshold: int) -> list[list[int]]:
+def card_constraint_to_cnf_totalizer(ante: list[int], vs: Collection[int], threshold: int) -> list[list[int]]:
     """
-    Given a set of variables vs, create a CNF formula that enforces that at least `threshold` of them are true.
+    Given a set of variables vs, create a CNF formula that enforces that, if all vars in ante are true, then at least threshold variable in vs are true.
     Uses the totalizer encoding.
-    The last clause in the returned list is the clause that enforces the cardinality constraint. 
     """
     global next_int
-    assert threshold > 1 and threshold < len(vs)
+    assert threshold > 0
+    ante_neg = [-a for a in ante]
+    if threshold == len(vs):
+        return [ante_neg+[u] for u in vs]
     cnfp = CardEnc.atleast(lits=list(vs), bound=threshold, top_id=next_int, encoding=EncType.totalizer)
     next_int = cnfp.nv+1
-    return cnfp.clauses
+    clauses = cnfp.clauses[:-1]
+    clauses.append(cnfp.clauses[-1] + ante_neg)
+    return clauses
 
-def find_disjoint_quorums(fbas: FBASGraph, solver='cryptominisat5', flatten=False) ->  Optional[Tuple[Collection, Collection]]:
+def find_disjoint_quorums(fbas: FBASGraph, solver='cryptominisat5', flatten:bool=False, card_encoding:Literal['naive','totalizer']='naive') ->  Optional[Tuple[Collection, Collection]]:
     """
     Find two disjoint quorums in the FBAS graph, or prove there are none.
     To do this, we build a CNF formula that is satsifiable if and only if there are two disjoint quorums.
@@ -81,14 +93,14 @@ def find_disjoint_quorums(fbas: FBASGraph, solver='cryptominisat5', flatten=Fals
 
     # first, for each vertex in the FBAS graph, create two variables each indicating whether the vertex is in quorum A or quorum B.
     # also create a map to keep track of which variables encodes what.
-    in_quorum_vars = {}
-    in_quorum_vars_inverse = {}
+    in_quorum_vars:dict[Any,int] = {}
+    in_quorum_vars_inverse:dict[int,Any] = {}
     for q in ['A', 'B']:
         for v in fbas.vertices():
             in_quorum_vars[(q, v)] = next_int
             in_quorum_vars_inverse[next_int] = (q, v)
             next_int += 1
-    def get_quorum(q:str, model:list[int]):
+    def get_quorum(q:str, model:list[int]) -> list:
         return [in_quorum_vars_inverse[i][1] for i in model
                     if i in in_quorum_vars_inverse.keys() \
                         and in_quorum_vars_inverse[i][0] == q \
@@ -102,14 +114,7 @@ def find_disjoint_quorums(fbas: FBASGraph, solver='cryptominisat5', flatten=Fals
         for v in fbas.vertices():
             if fbas.threshold(v) > 0:
                 vs = [in_quorum_vars[(q, n)] for n in fbas.graph.successors(v)]
-                if fbas.threshold(v) == len(vs):
-                    clauses += [[-in_quorum_vars[(q, v)],u] for u in vs]
-                else:
-                    card_clauses = card_constraint_to_cnf_totalizer(vs, fbas.threshold(v))
-                    # add all but the last clause:
-                    clauses += card_clauses[:-1]
-                    # the current variable implies the cardinality constraint:
-                    clauses.append(card_clauses[-1] + [-in_quorum_vars[(q, v)]])
+                clauses += card_constraint_to_cnf([in_quorum_vars[(q, v)]], vs, fbas.threshold(v), card_encoding=card_encoding)
             if fbas.threshold(v) == 0:
                 continue # no constraints for this vertex
             if fbas.threshold(v) < 0: # validators for which we don't have a threshold cannot be in the quorum:
@@ -138,8 +143,8 @@ def find_disjoint_quorums(fbas: FBASGraph, solver='cryptominisat5', flatten=Fals
         logging.info("Quorum B: %s", q2)
         return (q1, q2)
     
-def find_minimal_splitting_set(fbas: FBASGraph) ->  Optional[Collection]:
-    logging.info("Finding minimal splitting set using MaxSAT")
+def find_minimal_splitting_set(fbas: FBASGraph, card_encoding:Literal['naive','totalizer']='naive') ->  Optional[Collection]:
+    logging.info(f"Finding minimal splitting set using MaxSAT with {card_encoding} cardinality encoding")
 
     start_time = time.time()
 
@@ -180,15 +185,12 @@ def find_minimal_splitting_set(fbas: FBASGraph) ->  Optional[Collection]:
         for v in fbas.vertices():
             if fbas.threshold(v) > 0:
                 vs = [in_quorum_vars[(q, n)] for n in fbas.graph.successors(v)]
-                card_clauses = card_constraint_to_cnf(vs, fbas.threshold(v))
-                # add all but the last clause:
-                clauses += card_clauses[:-1]
                 if v in fbas.validators:
                     # the threshold must be met only if the validator is not faulty:
-                    clauses.append(card_clauses[-1] + [-in_quorum_vars[(q, v)], is_faulty_vars[v]])
+                    clauses += card_constraint_to_cnf([in_quorum_vars[(q, v)], -is_faulty_vars[v]], vs, fbas.threshold(v), card_encoding=card_encoding)
                 else:
                     # the threshold must be met:
-                    clauses.append(card_clauses[-1] + [-in_quorum_vars[(q, v)]])
+                    clauses += card_constraint_to_cnf([in_quorum_vars[(q, v)]], vs, fbas.threshold(v), card_encoding=card_encoding)
             if fbas.threshold(v) == 0:
                 continue # no constraints for this vertex
             if fbas.threshold(v) < 0: # validators for which we don't have a threshold cannot be in the quorum:
