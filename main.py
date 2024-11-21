@@ -7,7 +7,7 @@ from python_fbas.overlay import optimal_overlay
 from python_fbas.fbas import FBAS
 from python_fbas.fbas_generator import gen_symmetric_fbas
 from python_fbas.fbas_graph import FBASGraph
-from python_fbas.fbas_graph_analysis import find_disjoint_quorums_cnf, find_disjoint_quorums
+from python_fbas.fbas_graph_analysis import find_disjoint_quorums, find_disjoint_quorums_using_pysat_fmla
 from python_fbas.z3_fbas_graph_analysis import find_disjoint_quorums as z3_find_disjoint_quorums
 
 def load_json_from_file(validators_file):
@@ -121,10 +121,10 @@ def main():
                 result = z3_find_disjoint_quorums(fbas)
                 print(f"Disjoint quorums: {result}")
             elif args.cnf:
-                result = find_disjoint_quorums_cnf(fbas, flatten=args.flatten)
+                result = find_disjoint_quorums(fbas, flatten=args.flatten)
                 print(f"Disjoint quorums: {result}")
             elif args.pysat_fmla:
-                result = find_disjoint_quorums(fbas, flatten=args.flatten)
+                result = find_disjoint_quorums_using_pysat_fmla(fbas, flatten=args.flatten)
                 print(f"Disjoint quorums: {result}")
             else:
                 logging.error("Must specify one of --fast, --z3, --cnf, or --pysat-fmla")
