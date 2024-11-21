@@ -7,7 +7,7 @@ from python_fbas.overlay import optimal_overlay
 from python_fbas.fbas import FBAS
 from python_fbas.fbas_generator import gen_symmetric_fbas
 from python_fbas.fbas_graph import FBASGraph
-from python_fbas.fbas_graph_analysis import find_disjoint_quorums, find_disjoint_quorums_using_pysat_fmla
+from python_fbas.fbas_graph_analysis import find_disjoint_quorums, find_disjoint_quorums_using_pysat_fmla, find_minimal_splitting_set
 from python_fbas.z3_fbas_graph_analysis import find_disjoint_quorums as z3_find_disjoint_quorums
 
 def load_json_from_file(validators_file):
@@ -94,8 +94,8 @@ def main():
     logging.getLogger().setLevel(args.log_level)
 
     # group-by only applies to min-splitting-set:
-    if args.command != 'min-splitting-set' and args.group_by:
-        logging.error("--group-by only applies to the 'min-splitting-set' command")
+    if (args.command != 'min-splitting-set' or args.new) and args.group_by:
+        logging.error("--group-by only applies to the 'min-splitting-set' command and is not supported with the new codebase")
         exit(1)
 
     if args.command == 'update-stellarbeat-cache':
@@ -129,6 +129,9 @@ def main():
             else:
                 logging.error("Must specify one of --fast, --z3, --cnf, or --pysat-fmla")
                 exit(1)
+        elif args.command == 'min-splitting-set':
+            result = find_minimal_splitting_set(fbas)
+            print(f"Minimal splitting set: {result}")
         else:
             print("Command not supported with the new codebase")
             parser.print_help()
