@@ -1,7 +1,7 @@
 import pytest
 from test_utils import get_validators_from_test_fbas
-from python_fbas.fbas import QSet, FBAS, qset_intersection_bound
-from python_fbas.sat_based_fbas_analysis import check_intersection
+from python_fbas.deprecated.fbas import QSet, FBAS, qset_intersection_bound
+from python_fbas.deprecated.sat_based_fbas_analysis import check_intersection
 
 q1 = QSet.make(3, [1,2,3,4],[])
 o1 = QSet.make(2, [11,12,13],[])

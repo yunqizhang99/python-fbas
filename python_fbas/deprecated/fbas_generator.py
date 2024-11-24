@@ -1,6 +1,6 @@
 import json
 import os
-from python_fbas.fbas import FBAS, QSet
+from .fbas import FBAS, QSet
 
 def gen_symmetric_fbas(num_orgs:int, output=None) -> FBAS:
     """

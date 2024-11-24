@@ -5,7 +5,7 @@ from pysat.card import *
 from typing import Optional
 
 from .fbas import QSet, FBAS
-from .utils import to_cnf, clause_of_pseudo_atom
+from python_fbas.utils import to_cnf, clause_of_pseudo_atom
 
 def _optimal_overlay_constraints(fbas : FBAS):
     # TODO: try to minimize max degree with an ILP

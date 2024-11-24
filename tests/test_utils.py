@@ -11,7 +11,7 @@ def get_validators_from_test_fbas(filename) -> list[dict]:
     with open(path, 'r', encoding='utf-8') as f:
         return json.load(f)
     
-def get_test_data_list() -> list[dict[str,list[dict]]]:
+def get_test_data_list() -> dict[str,list[dict]]:
     test_data_dir = Path(__file__).parent / 'test_data'
     files = [file for file in test_data_dir.iterdir() if file.is_file()]
     data = {}

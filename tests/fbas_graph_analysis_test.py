@@ -67,32 +67,14 @@ def test_compare_z3():
         fbas_graph = FBASGraph.from_json(d)
         if fbas_graph.validators:
             assert (not find_disjoint_quorums(fbas_graph)) == (not z3_find_disjoint_quorums(fbas_graph))
-
-def test_quorum_intersection_3():
-    data = get_test_data_list()
-    for f,d in data.items():
-        logging.info("loading graph of %s", f)
-        fbas_graph = FBASGraph.from_json(d)
-        if fbas_graph.validators:
-            find_disjoint_quorums_using_pysat_fmla(fbas_graph, flatten=True)
-
-def test_quorum_intersection_4():
-    fbas = FBASGraph.from_json(get_validators_from_test_fbas('circular_1.json'))
-    assert not find_disjoint_quorums_using_pysat_fmla(fbas, flatten=True)
-    fbas = FBASGraph.from_json(get_validators_from_test_fbas('circular_2.json'))
-    assert not find_disjoint_quorums_using_pysat_fmla(fbas, flatten=True)
-    fbas2 = FBASGraph.from_json(get_validators_from_test_fbas('conflicted_2.json'))
-    q1, q2 = fbas2.find_disjoint_quorums()
-    logging.info("disjoint quorums: %s, %s", q1, q2)
-    assert find_disjoint_quorums_using_pysat_fmla(fbas2, flatten=True)
     
 def test_min_splitting_set_1():
     qset1 = {'threshold':3, 'validators':['PK1','PK2','PK3','PK4'],  'innerQuorumSets': []}
     fbas1 = FBASGraph()
     for v in ['PK1','PK2','PK3','PK4']:
         fbas1.update_validator(v, qset1)
-    assert len(find_minimal_splitting_set(fbas1)) == 2
+    assert len(find_minimal_splitting_set(fbas1)[0]) == 2
     fbas2 = FBASGraph.from_json(get_validators_from_test_fbas('circular_1.json'))
     assert not find_minimal_splitting_set(fbas2)
     fbas2 = FBASGraph.from_json(get_validators_from_test_fbas('circular_2.json'))
-    assert find_minimal_splitting_set(fbas2) == ['PK2']
+    assert find_minimal_splitting_set(fbas2)[0] == ['PK2']

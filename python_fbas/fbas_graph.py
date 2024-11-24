@@ -110,6 +110,12 @@ class FBASGraph:
             'num_edges' : len(self.graph.edges()),
             'thresholds_distribution' : thresholds_distribution()
         }
+    
+    def with_name(self, validator:str) -> str:
+        if 'name' in self.vertice_attrs(validator) and self.vertice_attrs(validator)['name']:
+            return validator + " (" + self.vertice_attrs(validator)['name'] + ")"
+        else:
+            return validator
         
     def add_validator(self, v:Any) -> None:
         """Add a validator to the graph."""

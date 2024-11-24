@@ -4,7 +4,7 @@ SAT-based analysis of FBAS graphs
 
 import logging
 import time
-from typing import Any, Literal, Optional, Tuple, Collection
+from typing import Any, Optional, Tuple, Collection
 from itertools import combinations
 from pysat.solvers import Solver
 from pysat.examples.lsu import LSU # MaxSAT algorithm
@@ -13,6 +13,7 @@ from pysat.formula import Or, And, Neg, Atom, Implies, Formula, WCNF
 from pysat.card import CardEnc, EncType
 from python_fbas.utils import to_cnf
 from python_fbas.fbas_graph import FBASGraph
+import python_fbas.config as config
 
 next_int = 1
 
@@ -34,14 +35,16 @@ def dnf_to_cnf(dnf: list[list[int]]) -> list[list[int]]:
     next_int += len(dnf)
     return clauses
 
-def card_constraint_to_cnf(ante: list[int], vs: Collection[int], threshold: int, card_encoding:Literal['naive','totalizer']='naive') -> list[list[int]]:
+def card_constraint_to_cnf(ante: list[int], vs: Collection[int], threshold: int) -> list[list[int]]:
     """
     Given a set of variables vs, create a CNF formula that enforces that, if all vars in ante are true, then at least threshold variable in vs are true.
     """
-    assert card_encoding in ['naive', 'totalizer']
-    if card_encoding == 'naive':
+    if config.card_encoding == 'naive':
         return card_constraint_to_cnf_naive(ante, vs, threshold)
-    return card_constraint_to_cnf_totalizer(ante, vs, threshold)
+    elif config.card_encoding == 'totalizer':
+        return card_constraint_to_cnf_totalizer(ante, vs, threshold)
+    logging.error("Unknown cardinality encoding: %s", config.card_encoding)
+    exit(1)
     
 def card_constraint_to_cnf_naive(ante: list[int], vs: Collection[int], threshold: int) -> list[list[int]]:
     """
@@ -67,7 +70,7 @@ def card_constraint_to_cnf_totalizer(ante: list[int], vs: Collection[int], thres
     clauses.append(cnfp.clauses[-1] + ante_neg)
     return clauses
 
-def find_disjoint_quorums(fbas: FBASGraph, solver='cryptominisat5', flatten:bool=False, card_encoding:Literal['naive','totalizer']='naive') ->  Optional[Tuple[Collection, Collection]]:
+def find_disjoint_quorums(fbas: FBASGraph) ->  Optional[Tuple[Collection, Collection]]:
     """
     Find two disjoint quorums in the FBAS graph, or prove there are none.
     To do this, we build a CNF formula that is satsifiable if and only if there are two disjoint quorums.
@@ -79,11 +82,7 @@ def find_disjoint_quorums(fbas: FBASGraph, solver='cryptominisat5', flatten:bool
     If the constraints are satisfiable, then we have two disjoint quorums and the truth assignment gives us the quorums.
     Otherwise, we know that no two disjoint quorums exist.
     """
-    logging.info("Finding disjoint quorums with solver %s", solver)
-
-    if flatten:
-        logging.error("Flattening is not supported with the new codebase")
-        exit(1)
+    logging.info("Finding disjoint quorums with solver %s", config.sat_solver)
 
     start_time = time.time()
 
@@ -115,7 +114,7 @@ def find_disjoint_quorums(fbas: FBASGraph, solver='cryptominisat5', flatten:bool
         for v in fbas.vertices():
             if fbas.threshold(v) > 0:
                 vs = [in_quorum_vars[(q, n)] for n in fbas.graph.successors(v)]
-                clauses += card_constraint_to_cnf([in_quorum_vars[(q, v)]], vs, fbas.threshold(v), card_encoding=card_encoding)
+                clauses += card_constraint_to_cnf([in_quorum_vars[(q, v)]], vs, fbas.threshold(v))
             if fbas.threshold(v) == 0:
                 continue # no constraints for this vertex
             if fbas.threshold(v) < 0: # validators for which we don't have a threshold cannot be in the quorum:
@@ -128,7 +127,7 @@ def find_disjoint_quorums(fbas: FBASGraph, solver='cryptominisat5', flatten:bool
     logging.info("Constraint-building time: %s", end_time - start_time)
 
     # now call the solver:
-    s = Solver(bootstrap_with=clauses, name=solver)
+    s = Solver(bootstrap_with=clauses, name=config.sat_solver)
     start_time = time.time()
     res = s.solve()
     end_time = time.time()
@@ -144,12 +143,12 @@ def find_disjoint_quorums(fbas: FBASGraph, solver='cryptominisat5', flatten:bool
         logging.info("Quorum B: %s", q2)
         return (q1, q2)
     
-def find_minimal_splitting_set(fbas: FBASGraph, card_encoding:Literal['naive','totalizer']='naive') ->  Optional[Collection]:
-    logging.info(f"Finding minimal-cardinality splitting set using MaxSAT with {card_encoding} cardinality encoding")
-
-    # TODO: this could help, but it's tricky... in the maxsat problem, the logical validators should be assigned a weight corresponding to what they represent.
-    # this will require tracking this in flatten_diamonds, and then using this information here.
-    # fbas.flatten_diamonds()
+def find_minimal_splitting_set(fbas: FBASGraph) ->  Optional[Tuple[Collection,Collection,Collection]]:
+    """
+    Find a minimal-cardinality splitting set in the FBAS graph, or prove there is none.
+    Uses one of pysat's MaxSAT procedures (LRU or RC2).
+    """
+    logging.info("Finding minimal-cardinality splitting set using MaxSAT algorithm %s with %s cardinality encoding", config.max_sat_algo, config.card_encoding)
 
     start_time = time.time()
 
@@ -192,10 +191,10 @@ def find_minimal_splitting_set(fbas: FBASGraph, card_encoding:Literal['naive','t
                 vs = [in_quorum_vars[(q, n)] for n in fbas.graph.successors(v)]
                 if v in fbas.validators:
                     # the threshold must be met only if the validator is not faulty:
-                    clauses += card_constraint_to_cnf([in_quorum_vars[(q, v)], -is_faulty_vars[v]], vs, fbas.threshold(v), card_encoding=card_encoding)
+                    clauses += card_constraint_to_cnf([in_quorum_vars[(q, v)], -is_faulty_vars[v]], vs, fbas.threshold(v))
                 else:
                     # the threshold must be met:
-                    clauses += card_constraint_to_cnf([in_quorum_vars[(q, v)]], vs, fbas.threshold(v), card_encoding=card_encoding)
+                    clauses += card_constraint_to_cnf([in_quorum_vars[(q, v)]], vs, fbas.threshold(v))
             if fbas.threshold(v) == 0:
                 continue # no constraints for this vertex
             if fbas.threshold(v) < 0: # validators for which we don't have a threshold cannot be in the quorum:
@@ -213,11 +212,15 @@ def find_minimal_splitting_set(fbas: FBASGraph, card_encoding:Literal['naive','t
     logging.info("Constraint-building time: %s", end_time - start_time)
 
     # now call the solver:
-    s = LSU(wcnf)
-    # s = RC2(wcnf)
+    if config.max_sat_algo == 'LRU':
+        s = LSU(wcnf)
+    else:
+        s = RC2(wcnf)
     start_time = time.time()
-    res = s.solve()
-    # res = s.compute()
+    if config.max_sat_algo == 'LRU':
+        res = s.solve()
+    else:
+        res = s.compute()
     end_time = time.time()
     logging.info("Solving time: %s", end_time - start_time)
     if not res:
@@ -227,14 +230,14 @@ def find_minimal_splitting_set(fbas: FBASGraph, card_encoding:Literal['naive','t
         print(f"Found minimal-cardinality splitting set, size is {s.cost}")
         model = list(s.model)
         ss = [is_faulty_vars_inverse[i] for i in model if i in is_faulty_vars_inverse.keys()]
-        logging.info("Minimal-cardinality splitting set: %s", ss)
+        logging.info("Minimal-cardinality splitting set: %s", [fbas.with_name(s) for s in ss])
         q1 = get_quorum('A', model)
         q2 = get_quorum('B', model)
-        logging.info("Quorum A: %s", q1)
-        logging.info("Quorum B: %s", q2)
-        return ss
+        logging.info("Quorum A: %s", [fbas.with_name(v) for v in q1])
+        logging.info("Quorum B: %s", [fbas.with_name(v) for v in q2])
+        return (ss, q1, q2)
     
-def find_disjoint_quorums_using_pysat_fmla(fbas: FBASGraph, solver='cms', flatten=False) -> Optional[Tuple[Collection, Collection]]:
+def find_disjoint_quorums_using_pysat_fmla(fbas: FBASGraph) -> Optional[Tuple[Collection, Collection]]:
     """
     Similar to find_disjoint_quorums, but encodes the problem to pysat's Formula class. Unfortunately this is very slow (most of the time is spent building pysat formulas).
     """
@@ -260,12 +263,6 @@ def find_disjoint_quorums_using_pysat_fmla(fbas: FBASGraph, solver='cms', flatte
         else:
             return Or()
 
-    if flatten:
-        start_time = time.time()
-        fbas.flatten_diamonds()
-        end_time = time.time()
-        logging.info("flattening time: %s", end_time - start_time)
-
     start_time = time.time()
     constraints : list[Formula] = []
     for q in ['A', 'B']: # our two quorums
@@ -286,7 +283,7 @@ def find_disjoint_quorums_using_pysat_fmla(fbas: FBASGraph, solver='cms', flatte
     logging.info("Time to convert to CNF: %s", end_time - start_time)
 
     # now call the solver:
-    s = Solver(bootstrap_with=clauses, name=solver)
+    s = Solver(bootstrap_with=clauses, name=config.sat_solver)
     start_time = time.time()
     res = s.solve()
     end_time = time.time()
