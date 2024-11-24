@@ -58,6 +58,8 @@ def card_constraint_to_cnf_totalizer(ante: list[int], vs: Collection[int], thres
     """
     Given a set of variables vs, create a CNF formula that enforces that, if all vars in ante are true, then at least threshold variable in vs are true.
     Uses the totalizer encoding.
+
+    NOTE: relies on the fact that, in the list of clauses returned by pysat's totalizer encoding, the last clause is the one enforcing the threshold.
     """
     global next_int
     assert threshold > 0
