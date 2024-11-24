@@ -16,14 +16,10 @@ def _load_json_from_file(validators_file):
     with open(validators_file, 'r', encoding='utf-8') as f:
         return json.load(f)
 
-def _load_json_from_stellarbeat() -> list[dict]:
-    # load dynamically because this triggers fetching data from Stellarbeat
-    mod = importlib.import_module('python_fbas.stellarbeat_data')
-    return mod.get_validators()
     
 def _load_fbas_graph(args) -> FBASGraph:
     if args.fbas == 'stellarbeat':
-        return FBASGraph.from_json(_load_json_from_stellarbeat())
+        return FBASGraph.from_json(get_stellarbeat_validators())
     return FBASGraph.from_json(_load_json_from_file(args.fbas))
 
 def main():
