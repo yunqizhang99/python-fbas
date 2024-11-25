@@ -199,6 +199,7 @@ def _min_blocking_set_constraints(fbas : FBAS) -> WCNF:
     We minimize the number of failed validators.
     We also need a well-foundedness condition. For this we superpose a directed graph (with variables for edges), assert that it's acyclic, and make sure a node can only be blocked by predecessors.
     It works on small examples but is otherwise extremely slow.
+
     """
     constraints : list[Formula] = []
     def failed(v) -> Formula:

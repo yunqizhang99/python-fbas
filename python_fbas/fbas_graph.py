@@ -12,6 +12,7 @@ from pprint import pformat
 import networkx as nx
 from networkx.classes.reportviews import NodeView
 from python_fbas.utils import powerset
+from python_fbas.max_acyclic_path import max_acyclic_path
 
 @dataclass(frozen=True)
 class QSet:
@@ -307,6 +308,31 @@ class FBASGraph:
                 return frozenset([v for v in closure if v in self.validators])
             closure |= new
 
+    def restrict_to_reachable(self, v: str) -> 'FBASGraph':
+        """
+        Returns a new fbas that only contains what's reachable from v.
+        """
+        reachable = set(nx.descendants(self.graph, v)) | {v}
+        fbas = copy(self)
+        fbas.graph = nx.subgraph(self.graph, reachable)
+        fbas.validators = reachable & self.validators
+        fbas.qsets = {k: v for k, v in self.qsets.items() if k in reachable}
+        return fbas
+    
+    def max_depth(self) -> int:
+        """
+        Returns the maximum depth from any node (without entering a loop).
+        TODO: there's probably a more efficient way to do this.
+        """
+        max = 0
+        for v in self.validators:
+            l, _ = max_acyclic_path(self.graph, n)
+            if l > max:
+                max = l
+        return max
+    
+    # Fast heuristic checks:
+
     def self_intersecting(self, n: str) -> bool:
         """
         Whether n is self-interescting
@@ -340,17 +366,6 @@ class FBASGraph:
         else:
             return 0
         
-    def restrict_to_reachable(self, v: str) -> 'FBASGraph':
-        """
-        Returns a new fbas that only contains what's reachable from v.
-        """
-        reachable = set(nx.descendants(self.graph, v)) | {v}
-        fbas = copy(self)
-        fbas.graph = nx.subgraph(self.graph, reachable)
-        fbas.validators = reachable & self.validators
-        fbas.qsets = {k: v for k, v in self.qsets.items() if k in reachable}
-        return fbas
-    
     def fast_intersection_check(self) -> Literal['true', 'unknown']:
         """
         This is a fast, sound, but incomplete heuristic to check whether all of a FBAS's quorums intersect (i.e. is intertwined).
@@ -390,6 +405,13 @@ class FBASGraph:
             else:
                 logging.debug("Validators not covered by clique: %s", validators_with_qset - self.closure(clique))
         return 'unknown'
+    
+    def splitting_set_bound(self) -> int:
+        """
+        Computes a lower bound on the mimimum splitting-set size. We just take the minimum of the intersection bound over all pairs of validators.
+        """
+        return min(self.intersection_bound_heuristic(self.qset_vertex_of(v1), self.qset_vertex_of(v2))
+                   for v1, v2 in combinations(self.validators, 2) if v1 != v2)
 
     def flatten_diamonds(self) -> None:
         """

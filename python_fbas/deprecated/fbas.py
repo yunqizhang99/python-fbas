@@ -9,8 +9,14 @@ from functools import lru_cache
 from itertools import combinations, product, islice
 from typing import Any, Optional, Literal
 import networkx as nx
-from python_fbas.utils import fixpoint
 
+def fixpoint(f, x):
+    """Iterate f starting from x until a fixed point is reached."""
+    while True:
+        y = f(x)
+        if x == y:
+            return x
+        x = y
 
 @dataclass(frozen=True)
 class QSet:

@@ -32,6 +32,7 @@ def main():
     parser.add_argument('--validator', default=None, help="Restrict the FBAS to what's reachable from this validator")
 
     parser.add_argument('--encoding', default='cnf', help="Encode the SAT problem in CNF (--cnf) or pysat Formulas (--pysat-fmla). The pysat Formula encoding is slow and mostly there for testing and didactic purposes)")
+    parser.add_argument('--heuristic-first', action='store_true', help="When available, first try a fast, sound but incomplete heuristic")
 
     parser.add_argument('--cardinality-encoding', default='totalizer', help="Cardinality encoding, either 'naive' or 'totalizer'")
     parser.add_argument('--sat-solver', default='cryptominisat5', help=f"SAT solver to use ({config.solvers}). See the documentation of the pysat package for more information.")
@@ -55,9 +56,11 @@ def main():
 
     # set config:
 
+
     if args.encoding not in ['cnf', 'pysat-fmla']:
         logging.error("Encoding must be either 'cnf' or 'pysat-fmla'")
         exit(1)
+    config.heuristic_first = args.heuristic_first
     if args.cardinality_encoding not in ['naive', 'totalizer']:
         logging.error("Cardinality encoding must be either 'naive' or 'totalizer'")
         exit(1)
