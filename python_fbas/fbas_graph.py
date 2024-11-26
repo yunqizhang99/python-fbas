@@ -324,12 +324,12 @@ class FBASGraph:
         Returns the maximum depth from any node (without entering a loop).
         TODO: there's probably a more efficient way to do this.
         """
-        max = 0
+        m = 0
         for v in self.validators:
-            l, _ = max_acyclic_path(self.graph, n)
-            if l > max:
-                max = l
-        return max
+            l, _ = max_acyclic_path(self.graph, v)
+            if l > m:
+                m = l
+        return m
     
     # Fast heuristic checks:
 

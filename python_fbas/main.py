@@ -4,7 +4,6 @@ Main CLI for the FBAS analysis tool
 
 import json
 import argparse
-import importlib
 import logging
 from python_fbas.fbas_graph import FBASGraph
 from python_fbas.fbas_graph_analysis import find_disjoint_quorums, \
@@ -37,6 +36,7 @@ def main():
     parser.add_argument('--cardinality-encoding', default='totalizer', help="Cardinality encoding, either 'naive' or 'totalizer'")
     parser.add_argument('--sat-solver', default='cryptominisat5', help=f"SAT solver to use ({config.solvers}). See the documentation of the pysat package for more information.")
     parser.add_argument('--max-sat-algo', default='LRU', help="MaxSAT algorithm to use (LRU or RC2)")
+    parser.add_argument('--output-problem', default=None, help="Write the constraint-satisfaction problem to the provided path")
 
     # subcommands:
     subparsers = parser.add_subparsers(dest="command", help="sub-command help")
@@ -51,6 +51,8 @@ def main():
     # Command for minimum splitting set
     subparsers.add_parser('min-splitting-set', help="Find minimal-cardinality splitting set")
     # subparsers.add_parser('min-blocking-set', help="Find minimal-cardinality blocking set")
+
+    # subparsers.add_parser('intersection-check-to-dimacs', help="Create a DIMACS file containing a problem that is satisfiable if and only there are disjoint quorums")
     
     args = parser.parse_args()
 
@@ -61,6 +63,7 @@ def main():
         logging.error("Encoding must be either 'cnf' or 'pysat-fmla'")
         exit(1)
     config.heuristic_first = args.heuristic_first
+    config.output = args.output_problem
     if args.cardinality_encoding not in ['naive', 'totalizer']:
         logging.error("Cardinality encoding must be either 'naive' or 'totalizer'")
         exit(1)

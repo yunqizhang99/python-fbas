@@ -9,7 +9,7 @@ from itertools import combinations
 from pysat.solvers import Solver
 from pysat.examples.lsu import LSU # MaxSAT algorithm
 from pysat.examples.rc2 import RC2 # MaxSAT algorithm
-from pysat.formula import Or, And, Neg, Atom, Implies, Formula, WCNF
+from pysat.formula import Or, And, Neg, Atom, Implies, Formula, WCNF, CNF
 from pysat.card import CardEnc, EncType
 from python_fbas.utils import to_cnf
 from python_fbas.fbas_graph import FBASGraph
@@ -22,6 +22,8 @@ Clauses = list[list[int]]
 # Use a context object to keep track of the global counter used to create fresh propositional variables; or pass a top_id around
 
 next_int: int = 1 # global counter used to create fresh propositional variables
+
+# TODO: Create low-level functions to encode constraints to CNF, i.e. classes for And, Or, Implies, and CNF conversion. Keep it simple and fast.
 
 def dnf_to_cnf(dnf: Clauses) -> Clauses:
     """
@@ -170,12 +172,29 @@ def find_disjoint_quorums(fbas: FBASGraph) ->  Optional[Tuple[Collection, Collec
     end_time = time.time()
     logging.info("Constraint-building time: %s", end_time - start_time)
 
+    if config.output:
+        logging.info("Writing CNF formula to file %s", config.output)
+        cnf = CNF(from_clauses=clauses)
+        cnf.to_file(config.output)
+
     # now call the solver:
     s = Solver(bootstrap_with=clauses, name=config.sat_solver)
     start_time = time.time()
     res = s.solve()
     end_time = time.time()
-    logging.info("Solving time: %s", end_time - start_time)
+    solving_time = end_time - start_time
+    logging.info("Solving time: %s", solving_time)
+
+    if config.output:
+        # add comment indicating whether the formula is satisfiable or not
+        # prepend comment to file:
+        if config.output:
+            with open(config.output, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+            with open(config.output, 'w', encoding='utf-8') as f:
+                comment = "c " + ("SATISFIABLE" if res else "UNSATISFIABLE") + " (cryptominisat5 runtime: " + str(solving_time) + " seconds)" + "\n"
+                f.write(comment)
+                f.writelines(lines)
     if not res:
         return None
     else:
@@ -300,6 +319,7 @@ def find_minimal_blocking_set(fbas: FBASGraph) -> Optional[Collection[str]]:
     """
     Find a minimal-cardinality blocking set in the FBAS graph, or prove there is none.
     """
+    raise NotImplementedError("Not implemented yet")
     logging.info("Finding minimal-cardinality blocking set using MaxSAT algorithm %s with %s cardinality encoding", config.max_sat_algo, config.card_encoding)
 
     start_time = time.time()
@@ -327,39 +347,7 @@ def find_minimal_blocking_set(fbas: FBASGraph) -> Optional[Collection[str]]:
             if fbas.threshold(v) > 0:
                 vs = [blocked_vars[(n,i-1)] for n in fbas.graph.successors(v)]
                 clauses += [] # TODO
-
-    # finally, convert to weighted CNF and add soft constraints that minimize the number of faulty validators:
-    wcnf = WCNF()
-    wcnf.extend(clauses)
-    for v in fbas.validators:
-        wcnf.append([-is_faulty_vars[v]], weight=1)
-
-    
-    end_time = time.time()
-    logging.info("Constraint-building time: %s", end_time - start_time)
-
-    # now call the solver:
-    if config.max_sat_algo == 'LRU':
-        s = LSU(wcnf)
-    else:
-        s = RC2(wcnf)
-    start_time = time.time()
-    if config.max_sat_algo == 'LRU':
-        res = s.solve()
-    else:
-        res = s.compute()
-    end_time = time.time()
-    logging.info("Solving time: %s", end_time - start_time)
-
-    if not res:
-        print("No blocking set found!")
-        return None
-    else:
-        print(f"Found minimal-cardinality blocking set, size is {s.cost}")
-        model = list(s.model)
-        ss = [is_faulty_vars_inverse[i] for i in model if i in is_faulty_vars_inverse.keys()]
-        logging.info("Minimal-cardinality blocking set: %s", [fbas.with_name(s) for s in ss])
-        return ss
+    return None
 
 def find_disjoint_quorums_using_pysat_fmla(fbas: FBASGraph) -> Optional[Tuple[Collection, Collection]]:
     """
