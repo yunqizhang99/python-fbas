@@ -6,7 +6,7 @@ import json
 import argparse
 import logging
 from python_fbas.fbas_graph import FBASGraph
-from python_fbas.fbas_graph_analysis import find_disjoint_quorums, \
+from python_fbas.fbas_graph_analysis import find_disjoint_quorums_, find_disjoint_quorums, \
     find_disjoint_quorums_using_pysat_fmla, find_minimal_splitting_set
 from python_fbas.stellarbeat_data import get_validators as get_stellarbeat_validators
 import python_fbas.config as config
@@ -57,7 +57,6 @@ def main():
     args = parser.parse_args()
 
     # set config:
-
 
     if args.encoding not in ['cnf', 'pysat-fmla']:
         logging.error("Encoding must be either 'cnf' or 'pysat-fmla'")

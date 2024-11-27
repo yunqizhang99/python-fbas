@@ -13,6 +13,7 @@ from pysat.formula import Or, And, Neg, Atom, Implies, Formula, WCNF, CNF
 from pysat.card import CardEnc, EncType
 from python_fbas.utils import to_cnf
 from python_fbas.fbas_graph import FBASGraph
+import python_fbas.propositional_logic as pl
 import python_fbas.config as config
 
 # A CNF formulat is a list of clauses, where a clause is a list of literals, where a literal is an integer denoting a propositional variable p > 0 or its negation -p.
@@ -404,6 +405,72 @@ def find_disjoint_quorums_using_pysat_fmla(fbas: FBASGraph) -> Optional[Tuple[Co
         fmlas = list(Formula.formulas(model, atoms_only=True))
         q1 = get_quorum_from_atoms(fmlas, 'A')
         q2 = get_quorum_from_atoms(fmlas, 'B')
+        logging.info("Disjoint quorums found")
+        logging.info("Quorum A: %s", q1)
+        logging.info("Quorum B: %s", q2)
+        assert fbas.is_quorum(q1)
+        assert fbas.is_quorum(q2)
+        assert not set(q1) & set(q2)
+        return (q1, q2)
+    return None
+
+
+def find_disjoint_quorums_(fbas: FBASGraph) -> Optional[Tuple[Collection, Collection]]:
+    """
+    Encodes the problem in propositional logic, apply the Tseitin transformation to convert to CNF,
+    and then calls a SAT solver.
+    """
+    logging.info("Finding disjoint quorums by encoding to propositional logic. Using %s cardinality encoding and solver %s", config.card_encoding, config.sat_solver)
+
+    def in_quorum(q:str, n:str):
+        return pl.Atom((q, n))
+
+    def get_quorum_from_atoms(atoms:list[int], q:str) -> list[str]:
+        """Given a list of SAT atoms, return the validators in quorum q."""
+        return [pl.variables_inv[v][1] for v in pl.variables.values() \
+                if v in atoms and pl.variables_inv[v][0] == q and pl.variables_inv[v][1] in fbas.validators]
+    
+    def all_in_quorum(s: Collection, q : str) -> pl.Formula:
+        return pl.And(*[in_quorum(q, n) for n in s])
+    
+    def quorum_satisfies_requirements_of(n: str, q: str) -> pl.Formula:
+        if fbas.threshold(n) > 0:
+            return pl.Or(*[all_in_quorum(s, q)
+                for s in combinations(fbas.graph.successors(n), fbas.threshold(n))])
+        elif fbas.threshold(n) == 0:
+            return pl.And()
+        else:
+            return pl.Or()
+
+    start_time = time.time()
+    constraints : list[pl.Formula] = []
+    for q in ['A', 'B']: # our two quorums
+        # the quorum must be non-empty:
+        constraints += [pl.Or(*[in_quorum(q, n) for n in fbas.validators])]
+        # the quorum must satisfy the requirements of each of its members:
+        constraints += \
+            [pl.Implies(in_quorum(q, n), quorum_satisfies_requirements_of(n, q))
+                for n in fbas.graph.nodes()]
+    # no validator can be in both quorums:
+    for v in fbas.validators:
+        constraints += [pl.Not(pl.And(in_quorum('A', v), in_quorum('B', v)))]
+    end_time = time.time()
+    logging.info("Constraint-building time: %s", end_time - start_time)
+    start_time = time.time()
+    clauses = pl.to_cnf(constraints)
+    end_time = time.time()
+    logging.info("Time to convert to CNF: %s", end_time - start_time)
+
+    # now call the solver:
+    s = Solver(bootstrap_with=clauses, name=config.sat_solver)
+    start_time = time.time()
+    res = s.solve()
+    end_time = time.time()
+    logging.info("Solving time: %s", end_time - start_time)
+    if res:
+        model = s.get_model()
+        q1 = get_quorum_from_atoms(model, 'A')
+        q2 = get_quorum_from_atoms(model, 'B')
         logging.info("Disjoint quorums found")
         logging.info("Quorum A: %s", q1)
         logging.info("Quorum B: %s", q2)
