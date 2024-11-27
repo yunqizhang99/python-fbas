@@ -51,8 +51,6 @@ def negate_cnf(cnf: Clauses) -> Clauses:
     neg_dnf = [[-l for l in c] for c in cnf]
     return dnf_to_cnf(neg_dnf)
 
-# TODO: version of card constraint for blocking set (this time the constraints imply something)
-
 def card_constraint_to_cnf(ante: list[int], vs: Collection[int], threshold: int) -> Clauses:
     """
     Given a set of variables vs, create a CNF formula that enforces that, if all vars in ante are true, then at least threshold variable in vs are true.
@@ -89,6 +87,8 @@ def card_constraint_to_cnf_totalizer(ante: list[int], vs: Collection[int], thres
     clauses = cnfp.clauses[:-1]
     clauses.append(cnfp.clauses[-1] + ante_neg)
     return clauses
+
+# TODO: version of card constraint for blocking set (this time the constraints imply something)
 
 def make_quorum_vars(q:str, fbas:FBASGraph) -> Tuple[dict[Any,int], dict[int,Any]]:
     """
@@ -192,9 +192,8 @@ def find_disjoint_quorums(fbas: FBASGraph) ->  Optional[Tuple[Collection, Collec
             with open(config.output, 'r', encoding='utf-8') as f:
                 lines = f.readlines()
             with open(config.output, 'w', encoding='utf-8') as f:
-                comment = "c " + ("SATISFIABLE" if res else "UNSATISFIABLE") + " (cryptominisat5 runtime: " + str(solving_time) + " seconds)" + "\n"
-                f.write(comment)
-                f.writelines(lines)
+                comment = "c " + ("SATISFIABLE" if res else "UNSATISFIABLE") + " (cryptominisat5 runtime: " + str(solving_time) + " seconds)\n"
+                f.writelines([comment] + lines)
     if not res:
         return None
     else:
