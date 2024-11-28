@@ -102,7 +102,7 @@ def main():
             print(f"Intersection-check result: {result}")
             exit(0)
         elif args.encoding == 'cnf':
-            result = find_disjoint_quorums(fbas)
+            result = find_disjoint_quorums_(fbas)
             print(f"Disjoint quorums: {result}")
             exit(0)
         elif args.encoding == 'pysat-fmla':

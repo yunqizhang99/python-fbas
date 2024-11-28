@@ -9,9 +9,76 @@ variable corresponding to the formula itself.
 """
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from itertools import combinations
 from typing import Any
+from pysat.card import CardEnc, EncType
 import python_fbas.config as config
+
+class Formula(ABC):
+    """
+    Abstract base class for propositional logic formulas.
+    """
+
+@dataclass
+class Atom(Formula):
+    """
+    A propositional logic atom.
+    """
+    identifier: Any
+
+@dataclass
+class Not(Formula):
+    """
+    Negation.
+    """
+    operand: Formula
+
+@dataclass(init=False)
+class And(Formula):
+    """
+    Conjunction.
+    """
+    operands: list[Formula]
+
+    def __init__(self, *operands: Formula):
+        self.operands = list(operands)
+
+@dataclass(init=False)
+class Or(Formula):
+    """
+    Disjunction.
+    """
+    operands: list[Formula]
+
+    def __init__(self, *operands: Formula):
+        self.operands = list(operands)
+    
+@dataclass(init=False)
+class Implies(Formula):
+    """
+    Implication. The last operand is the conclusion.
+    """
+    operands: list[Formula]
+
+    def __init__(self, *operands: Formula):
+        assert len(operands) >= 2
+        self.operands = list(operands)
+
+@dataclass(init=False)
+class Card(Formula):
+    """
+    A cardinality constraint. Only supports atoms.
+    """
+    threshold: int
+    operands: list[Atom]
+
+    def __init__(self, threshold: int, *operands: Atom):
+        assert threshold > 0 and len(operands) >= threshold
+        self.threshold = threshold
+        self.operands = list(operands)
+
+# Now on to CNF conversion
 
 Clauses = list[list[int]]
 
@@ -38,126 +105,66 @@ def anonymous_var() -> int:
     next_int += 1
     return next_int - 1
 
-class Formula(ABC):
+def to_cnf(arg: list[Formula]|Formula) -> Clauses:
     """
-    Abstract base class for propositional logic formulas.
-    """
-    @abstractmethod
-    def to_cnf(self) -> Clauses:
-        """
-        Convert the formula to CNF. This will be a very basic application of the Tseitin
-        transformation. We are not expecting formulas to share subformulas, so we will not keep
-        track of which variables correspond to which subformulas. By convention, the last clause in
-        the CNF is a unit clause with the variable corresponding to the formula itself.
-        """
-        pass
+    Convert the formula to CNF. This is a very basic application of the Tseitin transformation. We
+    are not expecting formulas to share subformulas, so we will not keep track of which variables
+    correspond to which subformulas. By convention, the last clause in the CNF is a unit clause
+    corresponding to the formula itself.
 
-def to_cnf(fmlas: list[Formula]) -> Clauses:
+    Note that this is a recursive function that will blow the stack if a formula is too deep (which
+    we do not expect for our application)
     """
-    Convert a list of formulas to CNF.
-    """
-    return [c for f in fmlas for c in f.to_cnf()]
-
-class Atom(Formula):
-    """
-    A propositional logic atom.
-    """
-    def __init__(self, identifier: Any):
-        self.identifier = identifier
-
-    def __str__(self):
-        return self.identifier
-
-    def to_cnf(self) -> Clauses:
-        return [[var(self.identifier)]]
-
-class Not(Formula):
-    """
-    Negation.
-    """
-    def __init__(self, operand: Formula):
-        self.operand = operand
-
-    def __str__(self):
-        return f'~({self.operand})'
-
-    def to_cnf(self) -> Clauses:
-        v = anonymous_var()
-        op_clauses = self.operand.to_cnf()
-        op_atom = op_clauses[-1][0] # that's the variable corresponding to the operand
-        assert op_atom > 0
-        new_clauses = [[-v, -op_atom],[v, op_atom]]
-        return op_clauses[:-1] + new_clauses + [[v]]
-
-class And(Formula):
-    """
-    Conjunction.
-    """
-    def __init__(self, *operands: Formula):
-        self.operands = operands
-
-    def __str__(self):
-        return ' & '.join(f'({str(op)})' for op in self.operands)
-    
-    def to_cnf(self) -> Clauses:
-        v = anonymous_var()
-        if not self.operands:
-            return [[v]] # trivially satisfiable
-        ops_clauses = [op.to_cnf() for op in self.operands]
-        ops_atoms = [c[-1][0] for c in ops_clauses]
-        assert all(op > 0 for op in ops_atoms)
-        new_clauses = [[-a for a in ops_atoms] + [v]] + [[-v, a] for a in ops_atoms]
-        return [c for cs in ops_clauses for c in cs[:-1]] + new_clauses + [[v]]
-
-class Or(Formula):
-    """
-    Disjunction.
-    """
-    def __init__(self, *operands: Formula):
-        self.operands = operands
-
-    def __str__(self):
-        return ' | '.join(f'({str(op)})' for op in self.operands)
-    
-    def to_cnf(self) -> Clauses:
-        v = anonymous_var()
-        if not self.operands:
-            return [[-v],[v]] # unsatisfiable
-        ops_clauses = [op.to_cnf() for op in self.operands]
-        ops_atoms = [c[-1][0] for c in ops_clauses]
-        assert all(op > 0 for op in ops_atoms)
-        new_clauses = [[-a, v] for a in ops_atoms] + [[-v] + ops_atoms]
-        return [c for cs in ops_clauses for c in cs[:-1]] + new_clauses + [[v]]
-    
-class Implies(Formula):
-    """
-    Implication. The last operand is the conclusion.
-    """
-    def __init__(self, *operands: Formula):
-        assert len(operands) >= 2
-        self.operands = operands
-
-    def __str__(self):
-        return '& '.join(f'({str(op)})' for op in self.operands[:-1]) + ' -> ' + str(self.operands[-1])
-    
-    def to_cnf(self) -> Clauses:
-        return Or(Not(And(*self.operands[:-1])), self.operands[-1]).to_cnf()
-
-class Card(Formula):
-    """
-    A cardinality constraint. Only supports atoms.
-    """
-    def __init__(self, threshold: int, *operands: Atom):
-        assert threshold > 0 and len(operands) >= threshold
-        self.threshold = threshold
-        self.operands = operands
-
-    def __str__(self):
-        return f'{self.threshold} out of {self.operands}'
-
-    def to_cnf(self) -> Clauses:
-        if config.card_encoding == 'naive':
-            fmla = Or(*[And(*c) for c in combinations(self.operands, self.threshold)])
-            return fmla.to_cnf()
-        else:
-            raise NotImplementedError
+    match arg:
+        case list(fmlas):
+            return [c for f in fmlas for c in to_cnf(f)]
+        case Atom() as a:
+            return [[var(a.identifier)]]
+        case Not(f) as neg:
+            match f:
+                case Atom(v):
+                    return [[-var(v)]]
+                case _:
+                    v = anonymous_var()
+                    op_clauses = to_cnf(f)
+                    assert len(op_clauses[-1]) == 1
+                    op_atom = op_clauses[-1][0] # that's the variable corresponding to the operand
+                    new_clauses = [[-v, -op_atom],[v, op_atom]]
+                    return op_clauses[:-1] + new_clauses + [[v]]
+        case And(ops):
+            v = anonymous_var()
+            if not ops:
+                return [[v]] # trivially satisfiable
+            ops_clauses = [to_cnf(op) for op in ops]
+            assert all(len(c[-1]) == 1 for c in ops_clauses)
+            ops_atoms = [c[-1][0] for c in ops_clauses]
+            new_clauses = [[-a for a in ops_atoms] + [v]] + [[-v, a] for a in ops_atoms]
+            return [c for cs in ops_clauses for c in cs[:-1]] + new_clauses + [[v]]
+        case Or(ops):
+            v = anonymous_var()
+            if not ops:
+                return [[-v],[v]] # unsatisfiable
+            ops_clauses = [to_cnf(op) for op in ops]
+            assert all(len(c[-1]) == 1 for c in ops_clauses)
+            ops_atoms = [c[-1][0] for c in ops_clauses]
+            new_clauses = [[-a, v] for a in ops_atoms] + [[-v] + ops_atoms]
+            return [c for cs in ops_clauses for c in cs[:-1]] + new_clauses + [[v]]
+        case Implies(ops):
+            return to_cnf(Or(Not(And(*ops[:-1])), ops[-1]))
+        case Card(threshold, ops):
+            match config.card_encoding:
+                case 'naive':
+                    fmla = Or(*[And(*c) for c in combinations(ops, threshold)])
+                    return to_cnf(fmla)
+                case 'totalizer':
+                    vs = [var(op.identifier) for op in ops]
+                    if threshold == len(vs):
+                        return to_cnf(And(*ops))
+                    global next_int
+                    cnfp = CardEnc.atleast(lits=list(vs), bound=threshold, top_id=next_int, encoding=EncType.totalizer)
+                    next_int = cnfp.nv+1
+                    return cnfp.clauses
+                case _:
+                    raise ValueError('Unknown cardinality encoding')
+        case _:
+            raise TypeError

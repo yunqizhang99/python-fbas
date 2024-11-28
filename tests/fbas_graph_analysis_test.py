@@ -30,6 +30,16 @@ def test_qi_cnf():
     assert find_disjoint_quorums(fbas2)
 
 def test_qi_():
+    config.card_encoding = 'totalizer'
+    fbas = FBASGraph.from_json(get_validators_from_test_fbas('circular_1.json'))
+    assert not find_disjoint_quorums_(fbas)
+    fbas = FBASGraph.from_json(get_validators_from_test_fbas('circular_2.json'))
+    assert not find_disjoint_quorums_(fbas)
+    fbas2 = FBASGraph.from_json(get_validators_from_test_fbas('conflicted.json'))
+    assert find_disjoint_quorums_(fbas2)
+
+def test_qi_2_():
+    config.card_encoding = 'naive'
     fbas = FBASGraph.from_json(get_validators_from_test_fbas('circular_1.json'))
     assert not find_disjoint_quorums_(fbas)
     fbas = FBASGraph.from_json(get_validators_from_test_fbas('circular_2.json'))
@@ -45,6 +55,9 @@ def test_qi_all():
         if fbas_graph.validators:
             assert (not find_disjoint_quorums_using_pysat_fmla(fbas_graph)) == (not find_disjoint_quorums(fbas_graph))
             assert (not find_disjoint_quorums(fbas_graph)) == (not z3_find_disjoint_quorums(fbas_graph))
+            config.card_encoding = 'totalizer'
+            assert (not find_disjoint_quorums_(fbas_graph)) == (not z3_find_disjoint_quorums(fbas_graph))
+            config.card_encoding = 'naive'
             assert (not find_disjoint_quorums_(fbas_graph)) == (not z3_find_disjoint_quorums(fbas_graph))
     
 def test_min_splitting_set_1():

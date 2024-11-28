@@ -430,13 +430,9 @@ def find_disjoint_quorums_(fbas: FBASGraph) -> Optional[Tuple[Collection, Collec
         return [pl.variables_inv[v][1] for v in pl.variables.values() \
                 if v in atoms and pl.variables_inv[v][0] == q and pl.variables_inv[v][1] in fbas.validators]
     
-    def all_in_quorum(s: Collection, q : str) -> pl.Formula:
-        return pl.And(*[in_quorum(q, n) for n in s])
-    
     def quorum_satisfies_requirements_of(n: str, q: str) -> pl.Formula:
         if fbas.threshold(n) > 0:
-            return pl.Or(*[all_in_quorum(s, q)
-                for s in combinations(fbas.graph.successors(n), fbas.threshold(n))])
+            return pl.Card(fbas.threshold(n), *[in_quorum(q, s) for s in fbas.graph.successors(n)])
         elif fbas.threshold(n) == 0:
             return pl.And()
         else:
