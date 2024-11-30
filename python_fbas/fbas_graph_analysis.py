@@ -15,6 +15,7 @@ from python_fbas.utils import to_cnf
 from python_fbas.fbas_graph import FBASGraph
 import python_fbas.propositional_logic as pl
 import python_fbas.config as config
+from python_fbas.max_simple_path import max_simple_path
 
 # A CNF formulat is a list of clauses, where a clause is a list of literals, where a literal is an integer denoting a propositional variable p > 0 or its negation -p.
 Clauses = list[list[int]]
@@ -406,38 +407,61 @@ def find_minimal_splitting_set_(fbas: FBASGraph) ->  Optional[Tuple[Collection,C
 def find_minimal_blocking_set(fbas: FBASGraph) -> Optional[Collection[str]]:
     """
     Find a minimal-cardinality blocking set in the FBAS graph, or prove there is none.
-
-    TODO: look for a set that blocks all nodes after the graph depth.
     """
-    raise NotImplementedError("Not implemented yet")
+
     logging.info("Finding minimal-cardinality blocking set using MaxSAT algorithm %s with %s cardinality encoding", config.max_sat_algo, config.card_encoding)
 
     start_time = time.time()
 
-    # the clauses of the CNF formula:
-    clauses: Clauses = []
+    constraints : list[pl.Formula] = []
 
-    max_depth = fbas.max_depth()
+    def blocked(l, n) -> pl.Atom:
+        return pl.Atom((l, n))
+    
+    def blocking_threshold(v) -> int:
+        return len(list(fbas.graph.successors(v))) - fbas.threshold(v) + 1
+    
+    max_level = max_simple_path(fbas.graph)
 
-    global next_int
-    # for each vertex, create a variable indicating whether it's blocked at level i (0 <= i <= max_depth), and the assiciated constraints:
-    blocked_vars = {}
-    blocked_vars_inverse = {}
-    for v in fbas.vertices():
-        blocked_vars[(v,0)] = next_int
-        blocked_vars_inverse[next_int] = (v,0)
-        next_int += 1
-    for i in range(1,max_depth+1):
-        for v in fbas.vertices():
-            blocked_vars[(v,i)] = next_int
-            blocked_vars_inverse[next_int] = (v,i)
-            next_int += 1
-        # create the constraints:
+    # level-i vertices are blocked by level-j vertices for j < i:
+    for l in range(1, max_level+1):
         for v in fbas.vertices():
             if fbas.threshold(v) > 0:
-                vs = [blocked_vars[(n,i-1)] for n in fbas.graph.successors(v)]
-                clauses += [] # TODO
-    return None
+                lower = [blocked(j, n) for j in range(l) for n in fbas.graph.successors(v)]
+                constraints.append(pl.Implies(pl.Card(blocking_threshold(v), *lower), blocked(l, v)))
+    
+    # at level 0, we only have validators:
+    for v in fbas.vertices() - fbas.validators:
+        constraints.append(pl.Not(blocked(0, v)))
+
+    # all validators blocked at some level:
+    for v in fbas.validators:
+        constraints.append(pl.Or(*[blocked(l, v) for l in range(max_level+1)]))
+
+    # convert to weighted CNF and add soft constraints that minimize the number of level-0 validators:
+    wcnf = WCNF()
+    wcnf.extend(pl.to_cnf(constraints))
+    for v in fbas.validators:
+        wcnf.append(pl.to_cnf(pl.Not(blocked(0, v)))[0], weight=1)
+
+    end_time = time.time()
+    logging.info("Constraint-building time: %s", end_time - start_time)
+
+    result = maximize(wcnf)
+    # TODO results don't make any sense...
+
+    if not result:
+        print("No blocking set found!")
+        return None
+    else:
+        cost, model = result
+        model = list(model)
+        logging.info(f"Found minimal-cardinality blocking set, size is {cost}")
+        s = [pl.variables_inv[v][1] for v in set(model) & set(pl.variables_inv.keys()) \
+            if pl.variables_inv[v][0] == 0]
+        logging.info("Minimal-cardinality blocking set: %s", s)
+        return s
+
 
 def find_disjoint_quorums_using_pysat_fmla(fbas: FBASGraph) -> Optional[Tuple[Collection, Collection]]:
     """

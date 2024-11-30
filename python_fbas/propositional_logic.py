@@ -7,7 +7,7 @@ too slow. The main functionality is conversion to CNF.
 from abc import ABC
 from dataclasses import dataclass
 from itertools import combinations
-from typing import Any
+from typing import Any, cast
 from pysat.card import CardEnc, EncType
 import python_fbas.config as config
 
@@ -64,7 +64,8 @@ class Implies(Formula):
 @dataclass(init=False)
 class Card(Formula):
     """
-    A cardinality constraint. Only supports atoms.
+    A cardinality constraint expressing that at least the treshold, out of the operands, are true.
+    Only supports atoms.
     """
     threshold: int
     operands: list[Atom]
@@ -111,9 +112,19 @@ def to_cnf(arg: list[Formula]|Formula) -> Clauses:
     Note that this is a recursive function that will blow the stack if a formula is too deep (which
     we do not expect for our application).
     """
+    def to_cnf_top(fmla: Formula) -> Clauses:
+        match fmla:
+            case Or(ops):
+                if all(isinstance(op, Atom) for op in ops):
+                    return [[var(cast(Atom,a).identifier) for a in ops]]
+                else:
+                    return to_cnf(fmla)
+            case _:
+                return to_cnf(fmla)
+
     match arg:
         case list(fmlas):
-            return [c for f in fmlas for c in to_cnf(f)]
+            return [c for f in fmlas for c in to_cnf_top(f)]
         case Atom() as a:
             return [[var(a.identifier)]]
         case Not(f):
@@ -156,6 +167,8 @@ def to_cnf(arg: list[Formula]|Formula) -> Clauses:
                     vs = [var(op.identifier) for op in ops]
                     if threshold == len(vs):
                         return to_cnf(And(*ops))
+                    if threshold == 1:
+                        return to_cnf(Or(*ops))
                     global next_int
                     cnfp = CardEnc.atleast(lits=list(vs), bound=threshold, top_id=next_int, encoding=EncType.totalizer)
                     next_int = cnfp.nv+1

@@ -12,7 +12,7 @@ from pprint import pformat
 import networkx as nx
 from networkx.classes.reportviews import NodeView
 from python_fbas.utils import powerset
-from python_fbas.max_acyclic_path import max_acyclic_path
+from python_fbas.max_simple_path import max_simple_path
 
 @dataclass(frozen=True)
 class QSet:
@@ -318,18 +318,6 @@ class FBASGraph:
         fbas.validators = reachable & self.validators
         fbas.qsets = {k: v for k, v in self.qsets.items() if k in reachable}
         return fbas
-    
-    def max_depth(self) -> int:
-        """
-        Returns the maximum depth from any node (without entering a loop).
-        TODO: there's probably a more efficient way to do this.
-        """
-        m = 0
-        for v in self.validators:
-            l, _ = max_acyclic_path(self.graph, v)
-            if l > m:
-                m = l
-        return m
     
     # Fast heuristic checks:
 

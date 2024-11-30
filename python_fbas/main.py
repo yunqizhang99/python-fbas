@@ -10,6 +10,7 @@ from python_fbas.fbas_graph_analysis import find_disjoint_quorums_, find_disjoin
     find_disjoint_quorums_using_pysat_fmla, find_minimal_splitting_set, find_minimal_splitting_set_
 from python_fbas.stellarbeat_data import get_validators as get_stellarbeat_validators
 import python_fbas.config as config
+import python_fbas.max_simple_path as msp
 
 def _load_json_from_file(validators_file):
     with open(validators_file, 'r', encoding='utf-8') as f:
@@ -53,6 +54,8 @@ def main():
     # subparsers.add_parser('min-blocking-set', help="Find minimal-cardinality blocking set")
 
     # subparsers.add_parser('intersection-check-to-dimacs', help="Create a DIMACS file containing a problem that is satisfiable if and only there are disjoint quorums")
+
+    subparsers.add_parser('max-simple-path', help="Find the maximal length of simple paths starting from a given node")
     
     args = parser.parse_args()
 
@@ -88,6 +91,11 @@ def main():
     logging.getLogger().setLevel(args.log_level)
 
     # Run commands:
+
+    if args.command == 'max-simple-path':
+        fbas = _load_fbas_graph(args)
+        print(msp.max_simple_path(fbas.graph))
+        exit(0)
 
     if args.command == 'update-stellarbeat-cache':
         get_stellarbeat_validators(update=True)

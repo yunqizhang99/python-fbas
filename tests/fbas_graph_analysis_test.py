@@ -88,6 +88,7 @@ def test_min_blocking_set_1():
     fbas1 = FBASGraph()
     for v in ['PK1','PK2','PK3','PK4']:
         fbas1.update_validator(v, qset1)
-    config.card_encoding = 'naive'
-    # assert find_minimal_blocking_set(fbas1)
+    config.card_encoding = 'totalizer'
+    # config.max_sat_algo = 'RC2'
+    assert find_minimal_blocking_set(fbas1)
     # assert len(find_minimal_blocking_set(fbas1)) == 2
