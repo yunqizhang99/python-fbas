@@ -7,7 +7,7 @@ import argparse
 import logging
 from python_fbas.fbas_graph import FBASGraph
 from python_fbas.fbas_graph_analysis import find_disjoint_quorums_, find_disjoint_quorums, \
-    find_disjoint_quorums_using_pysat_fmla, find_minimal_splitting_set
+    find_disjoint_quorums_using_pysat_fmla, find_minimal_splitting_set, find_minimal_splitting_set_
 from python_fbas.stellarbeat_data import get_validators as get_stellarbeat_validators
 import python_fbas.config as config
 
@@ -116,7 +116,7 @@ def main():
         if args.encoding == 'pysat-fmla':
             logging.error("min-splitting-set is not supported with --pysat-fmla")
             exit(1)
-        result = find_minimal_splitting_set(fbas)
+        result = find_minimal_splitting_set_(fbas)
         print(f"Minimal splitting-set cardinality is: {len(result[0])}")
         print(f"Example:\n{result[0]}\nsplits quorums\n{result[1]}\nand\n{result[2]}")
         exit(0)

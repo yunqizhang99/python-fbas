@@ -313,11 +313,101 @@ def find_minimal_splitting_set(fbas: FBASGraph) ->  Optional[Tuple[Collection,Co
         q2 = get_quorum(fbas, 'B',  model, quorum_vars_inverse)
         logging.info("Quorum A: %s", [fbas.with_name(v) for v in q1])
         logging.info("Quorum B: %s", [fbas.with_name(v) for v in q2])
+        return (ss, q1, q2)    
+
+def quorum_symbol(q:str) -> str:
+    return "%q"+q
+
+def in_quorum(q:str, n:str) -> pl.Atom:
+    """Returns an atom denoting whether node n is in quorum q."""
+    return pl.Atom(("%q"+q, n))
+
+def get_quorum_(atoms:list[int], q:str, fbas:FBASGraph) -> list[str]:
+    """Given a list of atoms, returns the validators in quorum q."""
+    return [pl.variables_inv[v][1] for v in set(atoms) & set(pl.variables_inv.keys()) \
+            if pl.variables_inv[v][0] == quorum_symbol(q) and pl.variables_inv[v][1] in fbas.validators]
+
+faulty_symbol:str = "%f"
+
+def faulty(n:str) -> pl.Atom:
+    """Returns an atom denoting whether node n is faulty."""
+    return pl.Atom((faulty_symbol,n))
+
+def get_faulty(atoms:list[int]) -> list[str]:
+    """Given a list of atoms, returns the faulty validators."""
+    return [pl.variables_inv[v][1] for v in set(atoms) & set(pl.variables_inv.keys()) \
+            if pl.variables_inv[v][0] == '%f']
+
+def find_minimal_splitting_set_(fbas: FBASGraph) ->  Optional[Tuple[Collection,Collection,Collection]]:
+    """
+    Find a minimal-cardinality splitting set in the FBAS graph, or prove there is none.
+    Uses one of pysat's MaxSAT procedures (LRU or RC2).
+    If found, returns the splitting set and the two quorums that it splits.
+    """
+
+    if config.heuristic_first:
+        logging.info("Computing lower bound on the splitting-set size using a fast heuristic (usually too conservative on non-symmetric networks)")
+        res = fbas.splitting_set_bound()
+        print(f"Lower bound on the splitting-set size: {res}")
+
+    logging.info("Finding minimal-cardinality splitting set using MaxSAT algorithm %s with %s cardinality encoding", config.max_sat_algo, config.card_encoding)
+
+    start_time = time.time()
+
+    constraints : list[pl.Formula] = []
+
+    # now we create the constraints:
+    for q in ['A', 'B']: # for each of our two quorums
+        # the quorum contains at least one non-faulty validator:
+        constraints += [pl.Or(*[pl.And(in_quorum(q, n), pl.Not(faulty(n))) for n in fbas.validators])]
+        # then, we add the threshold constraints:
+        for v in fbas.vertices():
+            if fbas.threshold(v) > 0:
+                vs = [in_quorum(q, n) for n in fbas.graph.successors(v)]
+                if v in fbas.validators:
+                    # the threshold must be met only if the validator is not faulty:
+                    constraints.append(pl.Implies(pl.And(in_quorum(q, v), pl.Not(faulty(v))), pl.Card(fbas.threshold(v), *vs)))
+                else:
+                    # the threshold must be met:
+                    constraints.append(pl.Implies(in_quorum(q, v), pl.Card(fbas.threshold(v), *vs)))
+            if fbas.threshold(v) == 0:
+                continue # no constraints for this vertex
+            if fbas.threshold(v) < 0: # validators for which we don't have a threshold cannot be in the quorum:
+                constraints.append(pl.Not(in_quorum(q, v)))
+    # add the constraint that no non-faulty validator can be in both quorums:
+    for v in fbas.validators:
+        constraints += [pl.Or(faulty(v), pl.Not(in_quorum('A', v)), pl.Not(in_quorum('B', v)))]
+    # finally, convert to weighted CNF and add soft constraints that minimize the number of faulty validators:
+    wcnf = WCNF()
+    wcnf.extend(pl.to_cnf(constraints))
+    for v in fbas.validators:
+        wcnf.append(pl.to_cnf(pl.Not(faulty(v)))[0], weight=1)
+
+    end_time = time.time()
+    logging.info("Constraint-building time: %s", end_time - start_time)
+
+    result = maximize(wcnf)
+
+    if not result:
+        print("No splitting set found!")
+        return None
+    else:
+        cost, model = result
+        print(f"Found minimal-cardinality splitting set, size is {cost}")
+        model = list(model)
+        ss = get_faulty(model)
+        logging.info("Minimal-cardinality splitting set: %s", [fbas.with_name(s) for s in ss])
+        q1 = get_quorum_(model, 'A', fbas)
+        q2 = get_quorum_(model, 'B', fbas)
+        logging.info("Quorum A: %s", [fbas.with_name(v) for v in q1])
+        logging.info("Quorum B: %s", [fbas.with_name(v) for v in q2])
         return (ss, q1, q2)
 
 def find_minimal_blocking_set(fbas: FBASGraph) -> Optional[Collection[str]]:
     """
     Find a minimal-cardinality blocking set in the FBAS graph, or prove there is none.
+
+    TODO: look for a set that blocks all nodes after the graph depth.
     """
     raise NotImplementedError("Not implemented yet")
     logging.info("Finding minimal-cardinality blocking set using MaxSAT algorithm %s with %s cardinality encoding", config.max_sat_algo, config.card_encoding)
@@ -414,7 +504,6 @@ def find_disjoint_quorums_using_pysat_fmla(fbas: FBASGraph) -> Optional[Tuple[Co
         return (q1, q2)
     return None
 
-
 def find_disjoint_quorums_(fbas: FBASGraph) -> Optional[Tuple[Collection, Collection]]:
     """
     Encodes the problem in propositional logic, apply the Tseitin transformation to convert to CNF,
@@ -422,34 +511,23 @@ def find_disjoint_quorums_(fbas: FBASGraph) -> Optional[Tuple[Collection, Collec
     """
     logging.info("Finding disjoint quorums by encoding to propositional logic. Using %s cardinality encoding and solver %s", config.card_encoding, config.sat_solver)
 
-    def in_quorum(q:str, n:str):
-        return pl.Atom((q, n))
-
-    def get_quorum_from_atoms(atoms:list[int], q:str) -> list[str]:
-        """Given a list of SAT atoms, return the validators in quorum q."""
-        return [pl.variables_inv[v][1] for v in pl.variables.values() \
-                if v in atoms and pl.variables_inv[v][0] == q and pl.variables_inv[v][1] in fbas.validators]
-    
-    def quorum_satisfies_requirements_of(n: str, q: str) -> pl.Formula:
-        if fbas.threshold(n) > 0:
-            return pl.Card(fbas.threshold(n), *[in_quorum(q, s) for s in fbas.graph.successors(n)])
-        elif fbas.threshold(n) == 0:
-            return pl.And()
-        else:
-            return pl.Or()
-
     start_time = time.time()
     constraints : list[pl.Formula] = []
     for q in ['A', 'B']: # our two quorums
         # the quorum must be non-empty:
         constraints += [pl.Or(*[in_quorum(q, n) for n in fbas.validators])]
-        # the quorum must satisfy the requirements of each of its members:
-        constraints += \
-            [pl.Implies(in_quorum(q, n), quorum_satisfies_requirements_of(n, q))
-                for n in fbas.graph.nodes()]
+        # then, we add the threshold constraints:
+        for v in fbas.vertices():
+            if fbas.threshold(v) > 0:
+                vs = [in_quorum(q, n) for n in fbas.graph.successors(v)]
+                constraints.append(pl.Implies(in_quorum(q, v), pl.Card(fbas.threshold(v), *vs)))
+            if fbas.threshold(v) == 0:
+                continue # no constraints for this vertex
+            if fbas.threshold(v) < 0: # validators for which we don't have a threshold cannot be in the quorum:
+                constraints.append(pl.Not(in_quorum(q, v)))
     # no validator can be in both quorums:
     for v in fbas.validators:
-        constraints += [pl.Not(pl.And(in_quorum('A', v), in_quorum('B', v)))]
+        constraints += [pl.Or(pl.Not(in_quorum('A', v)), pl.Not(in_quorum('B', v)))]
     end_time = time.time()
     logging.info("Constraint-building time: %s", end_time - start_time)
     start_time = time.time()
@@ -465,8 +543,8 @@ def find_disjoint_quorums_(fbas: FBASGraph) -> Optional[Tuple[Collection, Collec
     logging.info("Solving time: %s", end_time - start_time)
     if res:
         model = s.get_model()
-        q1 = get_quorum_from_atoms(model, 'A')
-        q2 = get_quorum_from_atoms(model, 'B')
+        q1 = get_quorum_(model, 'A', fbas)
+        q2 = get_quorum_(model, 'B', fbas)
         logging.info("Disjoint quorums found")
         logging.info("Quorum A: %s", q1)
         logging.info("Quorum B: %s", q2)

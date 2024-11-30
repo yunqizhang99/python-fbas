@@ -1,14 +1,10 @@
 """
-This module provides a simple implementation of propositional logic formulas, including cardinality
-constraints. The goal is do avoid all the bookkeeping done by pysat, which makes things too slow.
-
-The main functionality is conversion to CNF. This is implemented using the Tseitin transformation.
-We are not expecting formulas to share subformulas, so we will not keep track of which variables
-correspond to which subformulas. By convention, the last clause in the CNF is a unit clause with the
-variable corresponding to the formula itself.
+This module provides a simple implementation of propositional logic formulas, extended with
+cardinality constraints. The goal is do avoid all the bookkeeping done by pysat, which makes things
+too slow. The main functionality is conversion to CNF.
 """
 
-from abc import ABC, abstractmethod
+from abc import ABC
 from dataclasses import dataclass
 from itertools import combinations
 from typing import Any
@@ -41,7 +37,7 @@ class And(Formula):
     """
     operands: list[Formula]
 
-    def __init__(self, *operands: Formula):
+    def __init__(self, *operands: Formula): # do we really need to be able to write And(a,b,c) instead of And([a,b,c])?
         self.operands = list(operands)
 
 @dataclass(init=False)
@@ -110,17 +106,17 @@ def to_cnf(arg: list[Formula]|Formula) -> Clauses:
     Convert the formula to CNF. This is a very basic application of the Tseitin transformation. We
     are not expecting formulas to share subformulas, so we will not keep track of which variables
     correspond to which subformulas. By convention, the last clause in the CNF is a unit clause
-    corresponding to the formula itself.
+    that is satisfied iff the formula is satisfied.
 
     Note that this is a recursive function that will blow the stack if a formula is too deep (which
-    we do not expect for our application)
+    we do not expect for our application).
     """
     match arg:
         case list(fmlas):
             return [c for f in fmlas for c in to_cnf(f)]
         case Atom() as a:
             return [[var(a.identifier)]]
-        case Not(f) as neg:
+        case Not(f):
             match f:
                 case Atom(v):
                     return [[-var(v)]]
