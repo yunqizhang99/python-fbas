@@ -428,7 +428,7 @@ def find_minimal_blocking_set(fbas: FBASGraph) -> Optional[Collection[str]]:
         return len(list(fbas.graph.successors(v))) - fbas.threshold(v) + 1
     
     # TODO: this is not enough!
-    max_level = max_simple_path(fbas.graph)
+    max_level = max_simple_path(fbas.graph)+1
 
     for l in range(1, max_level+1):
         for v in fbas.vertices():

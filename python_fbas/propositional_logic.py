@@ -172,16 +172,20 @@ def to_cnf(arg: list[Formula]|Formula) -> Clauses:
                     assert all(len(c[-1]) == 1 for c in ops_clauses)
                     ops_atoms = [c[-1][0] for c in ops_clauses]
                     inner_clauses = [c for cs in ops_clauses for c in cs[:-1]]
-                    # TODO: can't do that, they are anonymous...
-                    ops_Atoms = [Atom(variables_inv[a]) for a in ops_atoms]
                     if threshold == len(ops_atoms):
-                        return to_cnf(And(*ops_Atoms))
+                        # TODO repetition of And case:
+                        v = anonymous_var()
+                        new_clauses = [[-a for a in ops_atoms] + [v]] + [[-v, a] for a in ops_atoms]
+                        return inner_clauses + new_clauses + [[v]]
                     if threshold == 1:
-                        return to_cnf(Or(*ops_Atoms))
+                        # TODO repetition of Or case:
+                        v = anonymous_var()
+                        new_clauses = [[-a, v] for a in ops_atoms] + [[-v] + ops_atoms]
+                        return inner_clauses + new_clauses + [[v]]
                     global next_int
                     cnfp = CardEnc.atleast(lits=list(ops_atoms), bound=threshold, top_id=next_int, encoding=EncType.totalizer)
                     next_int = cnfp.nv+1
-                    return cnfp.clauses
+                    return inner_clauses + cnfp.clauses
                 case _:
                     raise ValueError('Unknown cardinality encoding')
         case _:
