@@ -65,12 +65,11 @@ class Implies(Formula):
 class Card(Formula):
     """
     A cardinality constraint expressing that at least the treshold, out of the operands, are true.
-    Only supports atoms.
     """
     threshold: int
-    operands: list[Atom]
+    operands: list[Formula]
 
-    def __init__(self, threshold: int, *operands: Atom):
+    def __init__(self, threshold: int, *operands: Formula):
         assert threshold > 0 and len(operands) >= threshold
         self.threshold = threshold
         self.operands = list(operands)
@@ -106,12 +105,14 @@ def to_cnf(arg: list[Formula]|Formula) -> Clauses:
     """
     Convert the formula to CNF. This is a very basic application of the Tseitin transformation. We
     are not expecting formulas to share subformulas, so we will not keep track of which variables
-    correspond to which subformulas. By convention, the last clause in the CNF is a unit clause
-    that is satisfied iff the formula is satisfied.
+    correspond to which subformulas. By convention, the last clause in the CNF is a unit clause that
+    is satisfied iff the formula is satisfied. This is unless we know that the formula is a the
+    top-level.
 
     Note that this is a recursive function that will blow the stack if a formula is too deep (which
     we do not expect for our application).
     """
+
     def to_cnf_top(fmla: Formula) -> Clauses:
         match fmla:
             case Or(ops):
@@ -145,8 +146,9 @@ def to_cnf(arg: list[Formula]|Formula) -> Clauses:
             ops_clauses = [to_cnf(op) for op in ops]
             assert all(len(c[-1]) == 1 for c in ops_clauses)
             ops_atoms = [c[-1][0] for c in ops_clauses]
+            inner_clauses = [c for cs in ops_clauses for c in cs[:-1]]
             new_clauses = [[-a for a in ops_atoms] + [v]] + [[-v, a] for a in ops_atoms]
-            return [c for cs in ops_clauses for c in cs[:-1]] + new_clauses + [[v]]
+            return inner_clauses + new_clauses + [[v]]
         case Or(ops):
             v = anonymous_var()
             if not ops:
@@ -154,23 +156,30 @@ def to_cnf(arg: list[Formula]|Formula) -> Clauses:
             ops_clauses = [to_cnf(op) for op in ops]
             assert all(len(c[-1]) == 1 for c in ops_clauses)
             ops_atoms = [c[-1][0] for c in ops_clauses]
+            inner_clauses = [c for cs in ops_clauses for c in cs[:-1]]
             new_clauses = [[-a, v] for a in ops_atoms] + [[-v] + ops_atoms]
-            return [c for cs in ops_clauses for c in cs[:-1]] + new_clauses + [[v]]
+            return inner_clauses + new_clauses + [[v]]
         case Implies(ops):
             return to_cnf(Or(Not(And(*ops[:-1])), ops[-1]))
         case Card(threshold, ops):
             match config.card_encoding:
                 case 'naive':
+                    # TODO: possibly lots of sub-formula sharing here...
                     fmla = Or(*[And(*c) for c in combinations(ops, threshold)])
                     return to_cnf(fmla)
                 case 'totalizer':
-                    vs = [var(op.identifier) for op in ops]
-                    if threshold == len(vs):
-                        return to_cnf(And(*ops))
+                    ops_clauses = [to_cnf(op) for op in ops]
+                    assert all(len(c[-1]) == 1 for c in ops_clauses)
+                    ops_atoms = [c[-1][0] for c in ops_clauses]
+                    inner_clauses = [c for cs in ops_clauses for c in cs[:-1]]
+                    # TODO: can't do that, they are anonymous...
+                    ops_Atoms = [Atom(variables_inv[a]) for a in ops_atoms]
+                    if threshold == len(ops_atoms):
+                        return to_cnf(And(*ops_Atoms))
                     if threshold == 1:
-                        return to_cnf(Or(*ops))
+                        return to_cnf(Or(*ops_Atoms))
                     global next_int
-                    cnfp = CardEnc.atleast(lits=list(vs), bound=threshold, top_id=next_int, encoding=EncType.totalizer)
+                    cnfp = CardEnc.atleast(lits=list(ops_atoms), bound=threshold, top_id=next_int, encoding=EncType.totalizer)
                     next_int = cnfp.nv+1
                     return cnfp.clauses
                 case _:

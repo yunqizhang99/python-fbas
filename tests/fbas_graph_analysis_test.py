@@ -88,7 +88,17 @@ def test_min_blocking_set_1():
     fbas1 = FBASGraph()
     for v in ['PK1','PK2','PK3','PK4']:
         fbas1.update_validator(v, qset1)
-    config.card_encoding = 'totalizer'
-    # config.max_sat_algo = 'RC2'
-    assert find_minimal_blocking_set(fbas1)
-    # assert len(find_minimal_blocking_set(fbas1)) == 2
+    config.card_encoding = 'naive'
+    config.max_sat_algo = 'RC2'
+    b = find_minimal_blocking_set(fbas1)
+    assert len(b) == 2
+
+
+def test_min_blocking_set_2():
+    data = get_test_data_list()
+    for f,d in data.items():
+        if f == 'top_tier.json':
+            logging.info("loading graph of %s", f)
+            fbas_graph = FBASGraph.from_json(d)
+            config.card_encoding = 'naive'
+            find_minimal_blocking_set(fbas_graph)

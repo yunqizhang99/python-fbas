@@ -209,12 +209,12 @@ def find_disjoint_quorums(fbas: FBASGraph) ->  Optional[Tuple[Collection, Collec
         return (q1, q2)
     
 def maximize(wcnf:WCNF) -> Optional[Tuple[int, Any]]:
-    if config.max_sat_algo == 'LRU':
+    if config.max_sat_algo == 'LSU':
         s = LSU(wcnf)
     else:
         s = RC2(wcnf)
     start_time = time.time()
-    if config.max_sat_algo == 'LRU':
+    if config.max_sat_algo == 'LSU':
         res = s.solve()
     else:
         res = s.compute()
@@ -415,40 +415,47 @@ def find_minimal_blocking_set(fbas: FBASGraph) -> Optional[Collection[str]]:
 
     constraints : list[pl.Formula] = []
 
-    def blocked(l, n) -> pl.Atom:
+    def blocked_at_level(l:int, n:str) -> pl.Atom:
         return pl.Atom((l, n))
+
+    def blocked_below_level(l:int, n:str) -> pl.Formula:
+        assert l > 0
+        if l == 1:
+            return blocked_at_level(0, n)
+        return pl.Or(*[blocked_at_level(i, n) for i in range(l)])
     
     def blocking_threshold(v) -> int:
         return len(list(fbas.graph.successors(v))) - fbas.threshold(v) + 1
     
+    # TODO: this is not enough!
     max_level = max_simple_path(fbas.graph)
 
-    # level-i vertices are blocked by level-j vertices for j < i:
     for l in range(1, max_level+1):
         for v in fbas.vertices():
             if fbas.threshold(v) > 0:
-                lower = [blocked(j, n) for j in range(l) for n in fbas.graph.successors(v)]
-                constraints.append(pl.Implies(pl.Card(blocking_threshold(v), *lower), blocked(l, v)))
+                blocked = [blocked_below_level(l, n) for n in fbas.graph.successors(v)]
+                constraints.append(pl.Implies(pl.Card(blocking_threshold(v), *blocked), blocked_at_level(l, v)))
+                constraints.append(pl.Implies(blocked_at_level(l, v), pl.Card(blocking_threshold(v), *blocked)))
     
     # at level 0, we only have validators:
     for v in fbas.vertices() - fbas.validators:
-        constraints.append(pl.Not(blocked(0, v)))
+        constraints.append(pl.Not(blocked_at_level(0, v)))
 
-    # all validators blocked at some level:
+    # all validators (for which we have a qset) are blocked at some level:
     for v in fbas.validators:
-        constraints.append(pl.Or(*[blocked(l, v) for l in range(max_level+1)]))
+        if fbas.threshold(v) > 0:
+            constraints.append(blocked_below_level(max_level+1, v))
 
     # convert to weighted CNF and add soft constraints that minimize the number of level-0 validators:
     wcnf = WCNF()
     wcnf.extend(pl.to_cnf(constraints))
     for v in fbas.validators:
-        wcnf.append(pl.to_cnf(pl.Not(blocked(0, v)))[0], weight=1)
+        wcnf.append(pl.to_cnf(pl.Not(blocked_at_level(0, v)))[0], weight=1)
 
     end_time = time.time()
     logging.info("Constraint-building time: %s", end_time - start_time)
 
     result = maximize(wcnf)
-    # TODO results don't make any sense...
 
     if not result:
         print("No blocking set found!")
@@ -459,9 +466,13 @@ def find_minimal_blocking_set(fbas: FBASGraph) -> Optional[Collection[str]]:
         logging.info(f"Found minimal-cardinality blocking set, size is {cost}")
         s = [pl.variables_inv[v][1] for v in set(model) & set(pl.variables_inv.keys()) \
             if pl.variables_inv[v][0] == 0]
-        logging.info("Minimal-cardinality blocking set: %s", s)
+        logging.info("Minimal-cardinality blocking set: %s", [fbas.with_name(v) for v in s])
+        x = [pl.variables_inv[v] for v in set(model) & set(pl.variables_inv.keys())]
+        logging.info("Blocking levels: %s", x)
+        assert fbas.closure(s) == fbas.validators
+        for vs in combinations(s, cost-1):
+            assert fbas.closure(vs) != fbas.validators
         return s
-
 
 def find_disjoint_quorums_using_pysat_fmla(fbas: FBASGraph) -> Optional[Tuple[Collection, Collection]]:
     """

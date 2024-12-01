@@ -7,10 +7,9 @@ import argparse
 import logging
 from python_fbas.fbas_graph import FBASGraph
 from python_fbas.fbas_graph_analysis import find_disjoint_quorums_, find_disjoint_quorums, \
-    find_disjoint_quorums_using_pysat_fmla, find_minimal_splitting_set, find_minimal_splitting_set_
+    find_disjoint_quorums_using_pysat_fmla, find_minimal_splitting_set, find_minimal_splitting_set_, find_minimal_blocking_set
 from python_fbas.stellarbeat_data import get_validators as get_stellarbeat_validators
 import python_fbas.config as config
-import python_fbas.max_simple_path as msp
 
 def _load_json_from_file(validators_file):
     with open(validators_file, 'r', encoding='utf-8') as f:
@@ -36,7 +35,7 @@ def main():
 
     parser.add_argument('--cardinality-encoding', default='totalizer', help="Cardinality encoding, either 'naive' or 'totalizer'")
     parser.add_argument('--sat-solver', default='cryptominisat5', help=f"SAT solver to use ({config.solvers}). See the documentation of the pysat package for more information.")
-    parser.add_argument('--max-sat-algo', default='LRU', help="MaxSAT algorithm to use (LRU or RC2)")
+    parser.add_argument('--max-sat-algo', default='LSU', help="MaxSAT algorithm to use (LSU or RC2)")
     parser.add_argument('--output-problem', default=None, help="Write the constraint-satisfaction problem to the provided path")
 
     # subcommands:
@@ -51,12 +50,10 @@ def main():
 
     # Command for minimum splitting set
     subparsers.add_parser('min-splitting-set', help="Find minimal-cardinality splitting set")
-    # subparsers.add_parser('min-blocking-set', help="Find minimal-cardinality blocking set")
+    subparsers.add_parser('min-blocking-set', help="Find minimal-cardinality blocking set")
 
     # subparsers.add_parser('intersection-check-to-dimacs', help="Create a DIMACS file containing a problem that is satisfiable if and only there are disjoint quorums")
 
-    subparsers.add_parser('max-simple-path', help="Find the maximal length of simple paths starting from a given node")
-    
     args = parser.parse_args()
 
     # set config:
@@ -79,8 +76,8 @@ def main():
         exit(1)
     config.sat_solver = args.sat_solver
 
-    if args.max_sat_algo not in ['LRU', 'RC2']:
-        logging.error("MaxSAT algorithm must be either 'LRU' or 'RC2'")
+    if args.max_sat_algo not in ['LSU', 'RC2']:
+        logging.error("MaxSAT algorithm must be either 'LSU' or 'RC2'")
         exit(1)
     config.max_sat_algo = args.max_sat_algo
 
@@ -91,11 +88,6 @@ def main():
     logging.getLogger().setLevel(args.log_level)
 
     # Run commands:
-
-    if args.command == 'max-simple-path':
-        fbas = _load_fbas_graph(args)
-        print(msp.max_simple_path(fbas.graph))
-        exit(0)
 
     if args.command == 'update-stellarbeat-cache':
         get_stellarbeat_validators(update=True)
@@ -127,6 +119,13 @@ def main():
         result = find_minimal_splitting_set_(fbas)
         print(f"Minimal splitting-set cardinality is: {len(result[0])}")
         print(f"Example:\n{result[0]}\nsplits quorums\n{result[1]}\nand\n{result[2]}")
+        exit(0)
+    elif args.command == 'min-blocking-set':
+        if args.encoding == 'pysat-fmla':
+            logging.error("min-blocking-set is not supported with --pysat-fmla")
+            exit(1)
+        result = find_minimal_blocking_set(fbas)
+        print(f"Minimal blocking-set cardinality is: {len(result)}")
         exit(0)
     else:
         parser.print_help()
