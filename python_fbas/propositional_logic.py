@@ -115,8 +115,8 @@ def to_cnf(arg: list[Formula]|Formula) -> Clauses:
 
     def to_cnf_top(fmla: Formula) -> Clauses:
         """
-        Only called at the top level (not recursively). Thus we do not need to set things up for the
-        when we return to the caller.
+        Only called at the top level (not recursively). Thus we do not need to ensure that last
+        clause is a unit clause corresponding to the formula (which is normally used by the caller).
         """
         match fmla:
             case Or(ops):
@@ -131,6 +131,16 @@ def to_cnf(arg: list[Formula]|Formula) -> Clauses:
                     return to_cnf(fmla)
             case _:
                 return to_cnf(fmla)
+            
+    def and_gate(atoms: list[int]) -> Clauses:
+        v = anonymous_var()
+        clauses = [[-a for a in atoms] + [v]] + [[-v, a] for a in atoms]
+        return clauses + [[v]]
+            
+    def or_gate(atoms: list[int]) -> Clauses:
+        v = anonymous_var()
+        clauses = [[-a, v] for a in atoms] + [[-v] + atoms]
+        return clauses + [[v]]
 
     match arg:
         case list(fmlas):
@@ -149,31 +159,29 @@ def to_cnf(arg: list[Formula]|Formula) -> Clauses:
                     new_clauses = [[-v, -op_atom],[v, op_atom]]
                     return op_clauses[:-1] + new_clauses + [[v]]
         case And(ops):
-            v = anonymous_var()
             if not ops:
+                v = anonymous_var()
                 return [[v]] # trivially satisfiable
             ops_clauses = [to_cnf(op) for op in ops]
             assert all(len(c[-1]) == 1 for c in ops_clauses)
             ops_atoms = [c[-1][0] for c in ops_clauses]
             inner_clauses = [c for cs in ops_clauses for c in cs[:-1]]
-            new_clauses = [[-a for a in ops_atoms] + [v]] + [[-v, a] for a in ops_atoms]
-            return inner_clauses + new_clauses + [[v]]
+            return inner_clauses + and_gate(ops_atoms)
         case Or(ops):
-            v = anonymous_var()
             if not ops:
+                v = anonymous_var()
                 return [[-v],[v]] # unsatisfiable
             ops_clauses = [to_cnf(op) for op in ops]
             assert all(len(c[-1]) == 1 for c in ops_clauses)
             ops_atoms = [c[-1][0] for c in ops_clauses]
             inner_clauses = [c for cs in ops_clauses for c in cs[:-1]]
-            new_clauses = [[-a, v] for a in ops_atoms] + [[-v] + ops_atoms]
-            return inner_clauses + new_clauses + [[v]]
+            return inner_clauses + or_gate(ops_atoms)
         case Implies(ops):
             return to_cnf(Or(Not(And(*ops[:-1])), ops[-1]))
         case Card(threshold, ops):
             match config.card_encoding:
                 case 'naive':
-                    # TODO: possibly lots of sub-formula sharing here...
+                    # NOTE possibly lots of sub-formula sharing here: will be innefficient
                     fmla = Or(*[And(*c) for c in combinations(ops, threshold)])
                     return to_cnf(fmla)
                 case 'totalizer':
@@ -182,15 +190,9 @@ def to_cnf(arg: list[Formula]|Formula) -> Clauses:
                     ops_atoms = [c[-1][0] for c in ops_clauses]
                     inner_clauses = [c for cs in ops_clauses for c in cs[:-1]]
                     if threshold == len(ops_atoms):
-                        # TODO repetition of And case:
-                        v = anonymous_var()
-                        new_clauses = [[-a for a in ops_atoms] + [v]] + [[-v, a] for a in ops_atoms]
-                        return inner_clauses + new_clauses + [[v]]
+                        return inner_clauses + and_gate(ops_atoms)
                     if threshold == 1:
-                        # TODO repetition of Or case:
-                        v = anonymous_var()
-                        new_clauses = [[-a, v] for a in ops_atoms] + [[-v] + ops_atoms]
-                        return inner_clauses + new_clauses + [[v]]
+                        return inner_clauses + or_gate(ops_atoms)
                     global next_int
                     cnfp = CardEnc.atleast(lits=list(ops_atoms), bound=threshold, top_id=next_int, encoding=EncType.totalizer)
                     next_int = cnfp.nv+1
