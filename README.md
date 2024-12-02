@@ -34,6 +34,10 @@ To determine the minimal number of nodes that, if corrupted, can split the netwo
 ```
 python-fbas --log-leve=INFO --fbas=stellarbeat min-splitting-set
 ```
+To determine the minimal number of nodes that, if corrupted, can halt the network:
+```
+python-fbas --log-leve=INFO --fbas=stellarbeat min-blocking-set
+```
 
 You can also provide a FBAS to check in JSON format:
 ```

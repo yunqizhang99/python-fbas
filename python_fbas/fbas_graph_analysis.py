@@ -6,6 +6,7 @@ import logging
 import time
 from typing import Any, Optional, Tuple, Collection
 from itertools import combinations
+import networkx as nx
 from pysat.solvers import Solver
 from pysat.examples.lsu import LSU # MaxSAT algorithm
 from pysat.examples.rc2 import RC2 # MaxSAT algorithm
@@ -425,8 +426,8 @@ def find_minimal_blocking_set(fbas: FBASGraph) -> Optional[Collection[str]]:
     
     def blocked(v:str) -> pl.Atom: # we should not need this (since all need to be blocked)
         return pl.Atom((blocked_tag,v))
-    
-    def lt(v1:str, v2:str) -> pl.Atom:
+
+    def lt(v1:str, v2:str) -> pl.Formula:
         """
         v1 is strictly lower than v2
         """
@@ -447,12 +448,15 @@ def find_minimal_blocking_set(fbas: FBASGraph) -> Optional[Collection[str]]:
         if fbas.threshold(v) < 0:
             constraints.append(pl.Not(blocked(v)))
 
-    # the lt relation must be a partial order (anti-symmetric and transitive):
-    for v1 in fbas.vertices():
+    # the lt relation must be a partial order (anti-symmetric and transitive) on the vertices that matter:
+    sccs = [scc for scc in nx.strongly_connected_components(fbas.graph)
+            if fbas.is_quorum([v for v in set(scc) & fbas.validators])] # TODO is this guaranteed to contain the union of all minimal quorums?
+    assert sccs
+    k = set().union(*sccs)
+    for v1 in k:
         constraints.append(pl.Not(lt(v1, v1)))
-        # TODO This is what takes forever:
-        for v2 in fbas.vertices():
-            for v3 in fbas.vertices():
+        for v2 in k:
+            for v3 in k:
                 constraints.append(pl.Implies(pl.And(lt(v1, v2), lt(v2, v3)), lt(v1, v3)))
     
     # convert to weighted CNF and add soft constraints that minimize the number of faulty validators:
@@ -476,8 +480,8 @@ def find_minimal_blocking_set(fbas: FBASGraph) -> Optional[Collection[str]]:
         s:list[str] = [pl.variables_inv[v][1] for v in set(model) & set(pl.variables_inv.keys()) \
             if pl.variables_inv[v][0] == faulty_tag]
         logging.info("Minimal-cardinality blocking set: %s", [fbas.with_name(v) for v in s])
-        model_debug = [(v, pl.variables_inv[abs(v)]) for v in set(model) & set(pl.variables_inv.keys())]
-        logging.info("model debug: %s", model_debug)
+        # model_debug = [(v, pl.variables_inv[abs(v)]) for v in set(model) & set(pl.variables_inv.keys())]
+        # logging.info("model debug: %s", model_debug)
         assert fbas.closure(s) == fbas.validators
         for vs in combinations(s, cost-1):
             assert fbas.closure(vs) != fbas.validators
