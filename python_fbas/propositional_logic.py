@@ -114,10 +114,19 @@ def to_cnf(arg: list[Formula]|Formula) -> Clauses:
     """
 
     def to_cnf_top(fmla: Formula) -> Clauses:
+        """
+        Only called at the top level (not recursively). Thus we do not need to set things up for the
+        when we return to the caller.
+        """
         match fmla:
             case Or(ops):
                 if all(isinstance(op, Atom) for op in ops):
                     return [[var(cast(Atom,a).identifier) for a in ops]]
+                else:
+                    return to_cnf(fmla)
+            case Implies([And(ops), c]):
+                if all(isinstance(op, Atom) for op in ops) and isinstance(c, Atom):
+                    return [[-var(cast(Atom,a).identifier) for a in ops] + [var(c.identifier)]]
                 else:
                     return to_cnf(fmla)
             case _:

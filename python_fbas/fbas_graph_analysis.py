@@ -328,7 +328,7 @@ def get_quorum_(atoms:list[int], q:str, fbas:FBASGraph) -> list[str]:
     return [pl.variables_inv[v][1] for v in set(atoms) & set(pl.variables_inv.keys()) \
             if pl.variables_inv[v][0] == quorum_symbol(q) and pl.variables_inv[v][1] in fbas.validators]
 
-faulty_symbol:str = "%f"
+faulty_symbol:int = 0
 
 def faulty(n:str) -> pl.Atom:
     """Returns an atom denoting whether node n is faulty."""
@@ -337,7 +337,7 @@ def faulty(n:str) -> pl.Atom:
 def get_faulty(atoms:list[int]) -> list[str]:
     """Given a list of atoms, returns the faulty validators."""
     return [pl.variables_inv[v][1] for v in set(atoms) & set(pl.variables_inv.keys()) \
-            if pl.variables_inv[v][0] == '%f']
+            if pl.variables_inv[v][0] == faulty_symbol]
 
 def find_minimal_splitting_set_(fbas: FBASGraph) ->  Optional[Tuple[Collection,Collection,Collection]]:
     """
@@ -407,6 +407,85 @@ def find_minimal_splitting_set_(fbas: FBASGraph) ->  Optional[Tuple[Collection,C
 def find_minimal_blocking_set(fbas: FBASGraph) -> Optional[Collection[str]]:
     """
     Find a minimal-cardinality blocking set in the FBAS graph, or prove there is none.
+
+    TODO: this is too slow. Takes forever just to build the constraints (less to solve them...).
+    """
+
+    logging.info("Finding minimal-cardinality blocking set using MaxSAT algorithm %s with %s cardinality encoding", config.max_sat_algo, config.card_encoding)
+
+    start_time = time.time()
+
+    constraints : list[pl.Formula] = []
+
+    faulty_tag:int = 0
+    blocked_tag:int = 1
+
+    def is_faulty(v:str) -> pl.Atom:
+        return pl.Atom((faulty_tag,v))
+    
+    def blocked(v:str) -> pl.Atom: # we should not need this (since all need to be blocked)
+        return pl.Atom((blocked_tag,v))
+    
+    def lt(v1:str, v2:str) -> pl.Atom:
+        """
+        v1 is strictly lower than v2
+        """
+        return pl.Atom((v1, v2))
+    
+    def blocking_threshold(v) -> int:
+        return len(list(fbas.graph.successors(v))) - fbas.threshold(v) + 1
+    
+    # first, the threshold constraints:
+    for v in fbas.vertices():
+        constraints.append(pl.Or(is_faulty(v), blocked(v)))
+        if v not in fbas.validators:
+            constraints.append(pl.Not(is_faulty(v)))
+        if fbas.threshold(v) > 0:
+            may_block = [pl.And(blocked(n), lt(n,v)) for n in fbas.graph.successors(v)]
+            constraints.append(pl.Implies(pl.Card(blocking_threshold(v), *may_block), blocked(v)))
+            constraints.append(pl.Implies(pl.And(blocked(v), pl.Not(is_faulty(v))), pl.Card(blocking_threshold(v), *may_block)))
+        if fbas.threshold(v) < 0:
+            constraints.append(pl.Not(blocked(v)))
+
+    # the lt relation must be a partial order (anti-symmetric and transitive):
+    for v1 in fbas.vertices():
+        constraints.append(pl.Not(lt(v1, v1)))
+        # TODO This is what takes forever:
+        for v2 in fbas.vertices():
+            for v3 in fbas.vertices():
+                constraints.append(pl.Implies(pl.And(lt(v1, v2), lt(v2, v3)), lt(v1, v3)))
+    
+    # convert to weighted CNF and add soft constraints that minimize the number of faulty validators:
+    wcnf = WCNF()
+    wcnf.extend(pl.to_cnf(constraints))
+    for v in fbas.validators:
+        wcnf.append(pl.to_cnf(pl.Not(is_faulty(v)))[0], weight=1)
+
+    end_time = time.time()
+    logging.info("Constraint-building time: %s", end_time - start_time)
+
+    result = maximize(wcnf)
+
+    if not result:
+        print("No blocking set found!")
+        return None
+    else:
+        cost, model = result
+        model = list(model)
+        logging.info("Found minimal-cardinality blocking set, size is %s", cost)
+        s:list[str] = [pl.variables_inv[v][1] for v in set(model) & set(pl.variables_inv.keys()) \
+            if pl.variables_inv[v][0] == faulty_tag]
+        logging.info("Minimal-cardinality blocking set: %s", [fbas.with_name(v) for v in s])
+        model_debug = [(v, pl.variables_inv[abs(v)]) for v in set(model) & set(pl.variables_inv.keys())]
+        logging.info("model debug: %s", model_debug)
+        assert fbas.closure(s) == fbas.validators
+        for vs in combinations(s, cost-1):
+            assert fbas.closure(vs) != fbas.validators
+        return s
+
+def find_minimal_blocking_set_levels(fbas: FBASGraph) -> Optional[Collection[str]]:
+    """
+    Find a minimal-cardinality blocking set in the FBAS graph, or prove there is none.
     """
 
     logging.info("Finding minimal-cardinality blocking set using MaxSAT algorithm %s with %s cardinality encoding", config.max_sat_algo, config.card_encoding)
@@ -427,7 +506,7 @@ def find_minimal_blocking_set(fbas: FBASGraph) -> Optional[Collection[str]]:
     def blocking_threshold(v) -> int:
         return len(list(fbas.graph.successors(v))) - fbas.threshold(v) + 1
     
-    # TODO: this is not enough!
+    # TODO: this is not enough in general!
     max_level = max_simple_path(fbas.graph)+1
 
     for l in range(1, max_level+1):
