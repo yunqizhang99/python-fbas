@@ -5,9 +5,9 @@ Main CLI for the FBAS analysis tool
 import json
 import argparse
 import logging
+import sys
 from python_fbas.fbas_graph import FBASGraph
-from python_fbas.fbas_graph_analysis import find_disjoint_quorums_, find_disjoint_quorums, \
-    find_disjoint_quorums_using_pysat_fmla, find_minimal_splitting_set, find_minimal_splitting_set_, find_minimal_blocking_set_levels, find_minimal_blocking_set
+from python_fbas.fbas_graph_analysis import find_disjoint_quorums, find_minimal_splitting_set, find_minimal_blocking_set
 from python_fbas.stellarbeat_data import get_validators as get_stellarbeat_validators
 import python_fbas.config as config
 
@@ -29,9 +29,6 @@ def main():
     # specify a data source:
     parser.add_argument('--fbas', default='stellarbeat', help="Where to find the description of the FBAS to analyze (must be 'stellarbeat' or a path to a JSON file)")
     parser.add_argument('--validator', default=None, help="Restrict the FBAS to what's reachable from this validator")
-
-    parser.add_argument('--encoding', default='cnf', help="Encode the SAT problem in CNF (--cnf) or pysat Formulas (--pysat-fmla). The pysat Formula encoding is slow and mostly there for testing and didactic purposes)")
-    parser.add_argument('--heuristic-first', action='store_true', help="When available, first try a fast, sound but incomplete heuristic")
 
     parser.add_argument('--cardinality-encoding', default='totalizer', help="Cardinality encoding, either 'naive' or 'totalizer'")
     parser.add_argument('--sat-solver', default='cryptominisat5', help=f"SAT solver to use ({config.solvers}). See the documentation of the pysat package for more information.")
@@ -58,40 +55,33 @@ def main():
 
     # set config:
 
-    if args.encoding not in ['cnf', 'pysat-fmla']:
-        logging.error("Encoding must be either 'cnf' or 'pysat-fmla'")
-        exit(1)
-    config.heuristic_first = args.heuristic_first
     config.output = args.output_problem
     if args.cardinality_encoding not in ['naive', 'totalizer']:
         logging.error("Cardinality encoding must be either 'naive' or 'totalizer'")
-        exit(1)
-    if args.cardinality_encoding == 'totalizer' and args.encoding == 'pysat-fmla':
-        logging.error("Totalizer encoding is not supported with --pysat-fmla")
-        exit(1)
+        sys.exit(1)
     config.card_encoding = args.cardinality_encoding
 
     if args.sat_solver not in config.solvers:
         logging.error("Solver must be one of %s", config.solvers)
-        exit(1)
+        sys.exit(1)
     config.sat_solver = args.sat_solver
 
     if args.max_sat_algo not in ['LSU', 'RC2']:
         logging.error("MaxSAT algorithm must be either 'LSU' or 'RC2'")
-        exit(1)
+        sys.exit(1)
     config.max_sat_algo = args.max_sat_algo
 
     debug_levels = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
     if args.log_level not in debug_levels:
         logging.error("Log level must be one of %s", debug_levels)
-        exit(1)
+        sys.exit(1)
     logging.getLogger().setLevel(args.log_level)
 
     # Run commands:
 
     if args.command == 'update-stellarbeat-cache':
         get_stellarbeat_validators(update=True)
-        exit(0)
+        sys.exit(0)
 
     fbas = _load_fbas_graph(args)
     if args.validator:
@@ -100,36 +90,23 @@ def main():
         if args.fast:
             result = fbas.fast_intersection_check()
             print(f"Intersection-check result: {result}")
-            exit(0)
-        elif args.encoding == 'cnf':
-            result = find_disjoint_quorums_(fbas)
-            print(f"Disjoint quorums: {result}")
-            exit(0)
-        elif args.encoding == 'pysat-fmla':
-            result = find_disjoint_quorums_using_pysat_fmla(fbas)
-            print(f"Disjoint quorums: {result}")
-            exit(0)
+            sys.exit(0)
         else:
-            logging.error("Must specify one of --fast, --cnf, or --pysat-fmla")
-            exit(1)
+            result = find_disjoint_quorums(fbas)
+            print(f"Disjoint quorums: {result}")
+            sys.exit(0)
     elif args.command == 'min-splitting-set':
-        if args.encoding == 'pysat-fmla':
-            logging.error("min-splitting-set is not supported with --pysat-fmla")
-            exit(1)
-        result = find_minimal_splitting_set_(fbas)
+        result = find_minimal_splitting_set(fbas)
         print(f"Minimal splitting-set cardinality is: {len(result[0])}")
         print(f"Example:\n{result[0]}\nsplits quorums\n{result[1]}\nand\n{result[2]}")
-        exit(0)
+        sys.exit(0)
     elif args.command == 'min-blocking-set':
-        if args.encoding == 'pysat-fmla':
-            logging.error("min-blocking-set is not supported with --pysat-fmla")
-            exit(1)
         result = find_minimal_blocking_set(fbas)
         print(f"Minimal blocking-set cardinality is: {len(result)}")
-        exit(0)
+        sys.exit(0)
     else:
         parser.print_help()
-        exit(1)
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()

@@ -12,7 +12,6 @@ from pprint import pformat
 import networkx as nx
 from networkx.classes.reportviews import NodeView
 from python_fbas.utils import powerset
-from python_fbas.max_simple_path import max_simple_path
 
 @dataclass(frozen=True)
 class QSet:
@@ -356,7 +355,7 @@ class FBASGraph:
         
     def fast_intersection_check(self) -> Literal['true', 'unknown']:
         """
-        This is a fast, sound, but incomplete heuristic to check whether all of a FBAS's quorums intersect (i.e. is intertwined).
+        This is a fast, sound, but incomplete heuristic to check whether all of a FBAS's quorums intersect (i.e. is intertwined). It does not rely on a SAT solver.
         It may return 'unknown' even if the FBAS is intertwined (i.e. a false negative), but, if it returns 'true', then the FBAS is guaranteed intertwined (there are no false positives).
         NOTE: ignores validators for which we don't have a qset (because we don't know what their quorums might be).
 

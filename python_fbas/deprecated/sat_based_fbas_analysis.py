@@ -8,7 +8,7 @@ from pyqbf.formula import PCNF
 from pyqbf.solvers import Solver as QSolver
 
 from python_fbas.deprecated.fbas import QSet, FBAS
-from python_fbas.utils import to_cnf, clause_of_pseudo_atom, vars_of_cnf
+from python_fbas.deprecated.utils import to_cnf, clause_of_pseudo_atom, vars_of_cnf
 
 def _intersection_constraints(fbas : FBAS):
 
