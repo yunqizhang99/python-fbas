@@ -44,9 +44,9 @@ For example:
 ```
 python-fbas --log-leve=INFO --fbas=stellarbeat --group-by=homeDomain min-splitting-set
 ```
-This we compute the minimal number of home domains that must be corrupted in order to create disjoint quorums.
+This computes the minimal number of home domains that must be corrupted in order to create disjoint quorums.
 
-You might get supprising results due to a single validators having a weird configuration, and you might not care about this problematic validator.
+You might get surprising results due to a single validators having a weird configuration, and you might not care about this problematic validator.
 In this case it helps to restrict the analysis to the validators that are reachable from some validator you care about.
 For example, to restrict the FBAS to what is reachable to one of SDF's validators:
 ```
