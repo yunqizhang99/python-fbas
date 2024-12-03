@@ -1,5 +1,4 @@
 from collections.abc import Sequence
-from pysat.formula import Formula
 
 def powerset(s : Sequence):
     """A generator for the powerset of s. Assume elements in s are unique."""

@@ -29,6 +29,7 @@ def main():
     # specify a data source:
     parser.add_argument('--fbas', default='stellarbeat', help="Where to find the description of the FBAS to analyze (must be 'stellarbeat' or a path to a JSON file)")
     parser.add_argument('--validator', default=None, help="Restrict the FBAS to what's reachable from this validator")
+    parser.add_argument('--group-by', default=None, help="Group by the provided field (e.g. min-splitting-set with --group-by=homeDomain will compute the minimum number of home domains to corrupt to create disjoint quorums)")
 
     parser.add_argument('--cardinality-encoding', default='totalizer', help="Cardinality encoding, either 'naive' or 'totalizer'")
     parser.add_argument('--sat-solver', default='cryptominisat5', help=f"SAT solver to use ({config.solvers}). See the documentation of the pysat package for more information.")
@@ -61,6 +62,8 @@ def main():
         sys.exit(1)
     config.card_encoding = args.cardinality_encoding
 
+    config.group_by = args.group_by
+
     if args.sat_solver not in config.solvers:
         logging.error("Solver must be one of %s", config.solvers)
         sys.exit(1)
@@ -84,9 +87,13 @@ def main():
         sys.exit(0)
 
     fbas = _load_fbas_graph(args)
+    if config.group_by is not None and not all(config.group_by in fbas.vertice_attrs(v) for v in fbas.validators):
+        raise ValueError(f"Some validators do not have the \"{config.group_by}\" attribute")
     if args.validator:
         fbas = fbas.restrict_to_reachable(args.validator)
     if args.command == 'check-intersection':
+        if args.group_by:
+            logging.warning("--group-by does not affect check-intersection")
         if args.fast:
             result = fbas.fast_intersection_check()
             print(f"Intersection-check result: {result}")
