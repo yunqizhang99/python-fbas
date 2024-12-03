@@ -171,6 +171,7 @@ def find_minimal_splitting_set(fbas: FBASGraph) ->  Optional[Tuple[Collection,Co
         constraints += [Or(faulty(v), Not(in_quorum('A', v)), Not(in_quorum('B', v)))]
 
     if config.group_by:
+        # we add constraints assert that the group is faulty if and only if all its members are faulty
         groups = set(fbas.vertice_attrs(v)[config.group_by] for v in fbas.validators)
         members = {g: [v for v in fbas.validators if fbas.vertice_attrs(v)[config.group_by] == g] for g in groups}
         for g in groups:
@@ -217,6 +218,11 @@ def find_minimal_splitting_set(fbas: FBASGraph) ->  Optional[Tuple[Collection,Co
 def find_minimal_blocking_set(fbas: FBASGraph) -> Optional[Collection[str]]:
     """
     Find a minimal-cardinality blocking set in the FBAS graph, or prove there is none.
+
+    This is a bit more tricky than for splitting sets because we need to ensure that the
+    "blocked-by" relation is well-founded (i.e. not circular). We achieve this by introducing a
+    partial order on vertices and asserting that a vertex can only be blocked by vertices that are
+    strictly lower in the order.
     """
 
     logging.info("Finding minimal-cardinality blocking set using MaxSAT algorithm %s with %s cardinality encoding", config.max_sat_algo, config.card_encoding)
@@ -231,7 +237,7 @@ def find_minimal_blocking_set(fbas: FBASGraph) -> Optional[Collection[str]]:
     def faulty(v:str) -> Atom:
         return Atom((faulty_tag,v))
     
-    def blocked(v:str) -> Atom: # we should not need this (since all need to be blocked)
+    def blocked(v:str) -> Atom:
         return Atom((blocked_tag,v))
 
     def lt(v1:str, v2:str) -> Formula:
@@ -255,7 +261,9 @@ def find_minimal_blocking_set(fbas: FBASGraph) -> Optional[Collection[str]]:
         if fbas.threshold(v) < 0:
             constraints.append(Not(blocked(v)))
 
-    # the lt relation must be a partial order (anti-symmetric and transitive) on the vertices that matter:
+    # the lt relation must be a partial order (anti-symmetric and transitive). For performance, lt
+    # only relates vertices that are in the strongly connected components below (why this is sound is
+    # a little subtle; it has to do with the note below)
     sccs = [scc for scc in nx.strongly_connected_components(fbas.graph)
             if fbas.is_quorum([v for v in set(scc) & fbas.validators])] # NOTE contains the union of all minimal quorums
     assert sccs
@@ -268,6 +276,7 @@ def find_minimal_blocking_set(fbas: FBASGraph) -> Optional[Collection[str]]:
     
     groups = set()
     if config.group_by:
+        # we add constraints assert that the group is faulty if and only if all its members are faulty
         groups = set(fbas.vertice_attrs(v)[config.group_by] for v in fbas.validators)
         members = {g: [v for v in fbas.validators if fbas.vertice_attrs(v)[config.group_by] == g] for g in groups}
         for g in groups:
