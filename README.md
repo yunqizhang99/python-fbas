@@ -25,7 +25,7 @@ Run the main script and obtain the help message:
 python-fbas
 ```
 
-To check whether the current Stellar network has quorum intersection:
+To check whether the current Stellar network, according to data from [stellarbeat.io](https://stellarbeat.io) has quorum intersection:
 ```
 python-fbas --log-leve=INFO --fbas=stellarbeat check-intersection
 ```
@@ -48,7 +48,7 @@ This computes the minimal number of home domains that must be corrupted in order
 
 You might get surprising results due to a single validators having a weird configuration, and you might not care about this problematic validator.
 In this case it helps to restrict the analysis to the validators that are reachable from some validator you care about.
-For example, to restrict the FBAS to what is reachable to one of SDF's validators:
+For example, to restrict the FBAS to what is reachable from one of SDF's validators:
 ```
 python-fbas --log-level=INFO --group-by=homeDomain --validator=GCGB2S2KGYARPVIA37HYZXVRM2YZUEXA6S33ZU5BUDC6THSB62LZSTYH min-splitting-set
 ```
@@ -58,7 +58,7 @@ Finally, you can also provide a FBAS to check in JSON format:
 python-fbas --log-leve=INFO --fbas=tests/test_data/random/almost_symmetric_network_13_orgs_delete_prob_factor_1.json check-intersection
 ```
 
-Note that stellarbeat data is cached in a file the first time it is needed.
+Note that data form [stellarbeat.io](https://stellarbeat.io) is cached in a local file the first time it is needed.
 To update the cache:
 ```
 python-fbas update-stellarbeat-cache
