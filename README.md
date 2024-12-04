@@ -25,7 +25,7 @@ Run the main script and obtain the help message:
 python-fbas
 ```
 
-To check whether the current Stellar network, according to data from [stellarbeat.io](https://stellarbeat.io) has quorum intersection:
+To check whether the current Stellar network, according to data from [stellarbeat.io](https://stellarbeat.io), has quorum intersection:
 ```
 python-fbas --log-leve=INFO --fbas=stellarbeat check-intersection
 ```
