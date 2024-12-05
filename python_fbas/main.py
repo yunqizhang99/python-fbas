@@ -126,8 +126,9 @@ def main():
             logging.error("--group-by does not make sense with history-loss")
             exit(1)
         result = min_history_loss_critical_set(fbas)
-        print(f"Minimal history-loss critical set cardinality is: {len(result)}")
-        print(f"Example:\n{with_names(result)}")
+        print(f"Minimal history-loss critical set cardinality is: {len(result[0])}")
+        print(f"Example min critical set:\n{with_names(result[0])}")
+        print(f"Corresponding history-less quorum:\n {with_names(result[1])}")
         sys.exit(0)
     else:
         parser.print_help()

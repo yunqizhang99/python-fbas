@@ -320,7 +320,7 @@ def find_minimal_blocking_set(fbas: FBASGraph) -> Optional[Collection[str]]:
         else:
             return [g for g in s if g in groups]
         
-def min_history_loss_critical_set(fbas: FBASGraph) -> Collection[str]:
+def min_history_loss_critical_set(fbas: FBASGraph) -> Tuple[Collection[str], Collection[str]]:
     """
     Return a set of minimal cardinality such that, should the validators in the set stop publishing valid history, the history may be lost.
     """
@@ -383,4 +383,4 @@ def min_history_loss_critical_set(fbas: FBASGraph) -> Collection[str]:
             if variables_inv[v][0] == in_critical_quorum_tag and variables_inv[v][1] in fbas.validators]
         logging.info("Minimal-cardinality history-critical set: %s", [fbas.with_name(v) for v in min_critical])
         logging.info("Quorum: %s", [fbas.with_name(v) for v in quorum])
-        return min_critical
+        return (min_critical, quorum)
