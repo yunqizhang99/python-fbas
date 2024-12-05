@@ -319,3 +319,68 @@ def find_minimal_blocking_set(fbas: FBASGraph) -> Optional[Collection[str]]:
             return s
         else:
             return [g for g in s if g in groups]
+        
+def min_history_loss_critical_set(fbas: FBASGraph) -> Collection[str]:
+    """
+    Return a set of minimal cardinality such that, should the validators in the set stop publishing valid history, the history may be lost.
+    """
+
+    logging.info("Finding minimal-cardinality history-loss critical set using MaxSAT algorithm %s with %s cardinality encoding", config.max_sat_algo, config.card_encoding)
+
+    constraints : list[Formula] = []
+
+    in_critical_quorum_tag:int = 0
+    hist_error_tag:int = 1
+    in_crit_no_error_tag:int = 2
+
+    def has_hist_error(v) -> Atom:
+        return Atom((hist_error_tag,v))
+    
+    def in_critical_quorum(v) -> Atom:
+        return Atom((in_critical_quorum_tag,v))
+    
+    def in_crit_no_error(v) -> Atom:
+        return Atom((in_crit_no_error_tag,v))
+
+    for v in fbas.validators:
+        if fbas.vertice_attrs(v).get('historyArchiveHasError', True):
+            constraints.append(has_hist_error(v))
+        else:
+            constraints.append(Not(has_hist_error(v)))
+
+    for v in fbas.validators:
+        constraints.append(Implies(in_critical_quorum(v), Not(has_hist_error(v)), in_crit_no_error(v)))
+        constraints.append(Implies(in_crit_no_error(v), And(in_critical_quorum(v), Not(has_hist_error(v)))))
+
+    # the critical quorum is a non-empty quorum:
+    constraints += [Or(*[in_critical_quorum(v) for v in fbas.validators])]
+    for v in fbas.vertices():
+        if fbas.threshold(v) > 0:
+            vs = [in_critical_quorum(n) for n in fbas.graph.successors(v)]
+            constraints.append(Implies(in_critical_quorum(v), Card(fbas.threshold(v), *vs)))
+        if fbas.threshold(v) == 0:
+            continue # no constraints for this vertex
+        if fbas.threshold(v) < 0:
+            constraints.append(Not(in_critical_quorum(v)))
+
+    wcnf = WCNF()
+    wcnf.extend(to_cnf(constraints))
+    # minimize the number of validators that are in the critical quorum but do not have history errors:
+    for v in fbas.validators:
+        wcnf.append(to_cnf(Not(in_crit_no_error(v)))[0], weight=1)
+
+    result = maximize(wcnf)
+
+    if not result:
+        raise ValueError("No critical set found! This should not happen.")
+    else:
+        cost, model = result
+        logging.info("Found minimal-cardinality history-critical set, size is %s", cost)
+        model = list(model)
+        min_critical = [variables_inv[v][1] for v in set(model) & set(variables_inv.keys()) \
+            if variables_inv[v][0] == in_crit_no_error_tag]
+        quorum = [variables_inv[v][1] for v in set(model) & set(variables_inv.keys()) \
+            if variables_inv[v][0] == in_critical_quorum_tag and variables_inv[v][1] in fbas.validators]
+        logging.info("Minimal-cardinality history-critical set: %s", [fbas.with_name(v) for v in min_critical])
+        logging.info("Quorum: %s", [fbas.with_name(v) for v in quorum])
+        return min_critical

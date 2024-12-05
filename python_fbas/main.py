@@ -7,7 +7,7 @@ import argparse
 import logging
 import sys
 from python_fbas.fbas_graph import FBASGraph
-from python_fbas.fbas_graph_analysis import find_disjoint_quorums, find_minimal_splitting_set, find_minimal_blocking_set
+from python_fbas.fbas_graph_analysis import find_disjoint_quorums, find_minimal_splitting_set, find_minimal_blocking_set, min_history_loss_critical_set
 from python_fbas.stellarbeat_data import get_validators as get_stellarbeat_validators
 import python_fbas.config as config
 
@@ -24,7 +24,7 @@ def _load_fbas_graph(args) -> FBASGraph:
 def main():
     parser = argparse.ArgumentParser(description="FBAS analysis CLI")
     # specify log level with --log-level, with default WARNING:
-    parser.add_argument('--log-level', default='INFO', help="Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)")
+    parser.add_argument('--log-level', default='WARNING', help="Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)")
     
     # specify a data source:
     parser.add_argument('--fbas', default='stellarbeat', help="Where to find the description of the FBAS to analyze (must be 'stellarbeat' or a path to a JSON file)")
@@ -49,6 +49,7 @@ def main():
     # Command for minimum splitting set
     subparsers.add_parser('min-splitting-set', help="Find minimal-cardinality splitting set")
     subparsers.add_parser('min-blocking-set', help="Find minimal-cardinality blocking set")
+    subparsers.add_parser('history-loss', help="Find a minimal-cardinality set of validators such that, should they stop publishing valid history, would allow a full quorum to get ahead without publishing valid history (in which case history may be lost)")
 
     # subparsers.add_parser('intersection-check-to-dimacs', help="Create a DIMACS file containing a problem that is satisfiable if and only there are disjoint quorums")
 
@@ -91,25 +92,42 @@ def main():
         raise ValueError(f"Some validators do not have the \"{config.group_by}\" attribute")
     if args.validator:
         fbas = fbas.restrict_to_reachable(args.validator)
+
+    def with_names(vs:list[str]) -> list[str]:
+        return [fbas.with_name(v) for v in vs]
+
     if args.command == 'check-intersection':
         if args.group_by:
-            logging.warning("--group-by does not affect check-intersection")
+            logging.error("--group-by does not make sense with check-intersection")
+            exit(1)
         if args.fast:
             result = fbas.fast_intersection_check()
             print(f"Intersection-check result: {result}")
             sys.exit(0)
         else:
             result = find_disjoint_quorums(fbas)
-            print(f"Disjoint quorums: {result}")
+            if result:
+                print(f"Disjoint quorums: {with_names(result[0])}\n and {with_names(result[1])}")
+            else:
+                print("No disjoint quorums found")
             sys.exit(0)
     elif args.command == 'min-splitting-set':
         result = find_minimal_splitting_set(fbas)
         print(f"Minimal splitting-set cardinality is: {len(result[0])}")
-        print(f"Example:\n{result[0]}\nsplits quorums\n{result[1]}\nand\n{result[2]}")
+        print(f"Example:\n{with_names(result[0]) if not config.group_by else result[0]}\nsplits quorums\n{with_names(result[1])}\nand\n{with_names(result[2])}")
         sys.exit(0)
     elif args.command == 'min-blocking-set':
         result = find_minimal_blocking_set(fbas)
         print(f"Minimal blocking-set cardinality is: {len(result)}")
+        print(f"Example:\n{with_names(result) if not config.group_by else result}")
+        sys.exit(0)
+    elif args.command == 'history-loss':
+        if args.group_by:
+            logging.error("--group-by does not make sense with history-loss")
+            exit(1)
+        result = min_history_loss_critical_set(fbas)
+        print(f"Minimal history-loss critical set cardinality is: {len(result)}")
+        print(f"Example:\n{with_names(result)}")
         sys.exit(0)
     else:
         parser.print_help()

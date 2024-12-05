@@ -1,10 +1,10 @@
 # python-fbas
 
 python-fbas is a tool to analyze Federated Byzantine Agreement Systems (FBAS), as used in the Stellar network, using automated constraint solvers like SAT solvers.
-It can find disjoint quorums, minimal-cardinality splitting sets, and minimal-cardinality blocking sets.
+It can find disjoint quorums, minimal-cardinality splitting sets, minimal-cardinality blocking sets, and minimal-cardinality history-critical sets.
+(A minimal history-critical set is a set of validators such that, should they stop publishing valid history, would make it possible to loose network history)
 
-python-fbas seems to be able to handle much larger FBASs than [fbas_analyzer](https://github.com/trudi-group/fbas_analyzer).
-
+python-fbas seems to be able to handle much larger FBASs than [fbas_analyzer](https://github.com/trudi-group/fbas_analyzer) or the quorum-intersection checker of [stellar-core](https://github.com/stellar/stellar-core/).
 
 ## Technical highlights
 
@@ -47,22 +47,22 @@ python-fbas
 
 To check whether the current Stellar network, according to data from [stellarbeat.io](https://stellarbeat.io), has quorum intersection:
 ```
-python-fbas --log-leve=INFO --fbas=stellarbeat check-intersection
+python-fbas --fbas=stellarbeat check-intersection
 ```
 
 To determine the minimal number of nodes that, if corrupted, can split the network:
 ```
-python-fbas --log-leve=INFO --fbas=stellarbeat min-splitting-set
+python-fbas --fbas=stellarbeat min-splitting-set
 ```
 To determine the minimal number of nodes that, if corrupted, can halt the network:
 ```
-python-fbas --log-leve=INFO --fbas=stellarbeat min-blocking-set
+python-fbas --fbas=stellarbeat min-blocking-set
 ```
 
 For the `min-splitting-set` and `min-blocking-set` commands, you can group validators by attribute.
 For example:
 ```
-python-fbas --log-leve=INFO --fbas=stellarbeat --group-by=homeDomain min-splitting-set
+python-fbas --fbas=stellarbeat --group-by=homeDomain min-splitting-set
 ```
 This computes the minimal number of home domains that must be corrupted in order to create disjoint quorums.
 
@@ -70,12 +70,16 @@ You might get surprising results due to a single validators having a weird confi
 In this case it helps to restrict the analysis to the validators that are reachable from some validator you care about.
 For example, to restrict the FBAS to what is reachable from one of SDF's validators:
 ```
-python-fbas --log-level=INFO --group-by=homeDomain --validator=GCGB2S2KGYARPVIA37HYZXVRM2YZUEXA6S33ZU5BUDC6THSB62LZSTYH min-splitting-set
+python-fbas --group-by=homeDomain --validator=GCGB2S2KGYARPVIA37HYZXVRM2YZUEXA6S33ZU5BUDC6THSB62LZSTYH min-splitting-set
+```
+To determine the minimal number of nodes that, should they stop publishing history, might cause total loss of history:
+```
+python-fbas --fbas=stellarbeat history-loss
 ```
 
 Finally, you can also provide a FBAS to check in JSON format:
 ```
-python-fbas --log-leve=INFO --fbas=tests/test_data/random/almost_symmetric_network_13_orgs_delete_prob_factor_1.json check-intersection
+python-fbas --fbas=tests/test_data/random/almost_symmetric_network_13_orgs_delete_prob_factor_1.json check-intersection
 ```
 
 Note that data form [stellarbeat.io](https://stellarbeat.io) is cached in a local file the first time it is needed.
