@@ -1,5 +1,25 @@
 # python-fbas
 
+python-fbas is a tool to analyze Federated Byzantine Agreement Systems (FBAS), as used in the Stellar network, using automated constraint solvers like SAT solvers.
+It can find disjoint quorums, minimal-cardinality splitting sets, and minimal-cardinality blocking sets.
+
+python-fbas seems to be able to handle much larger FBASs than [fbas_analyzer](https://github.com/trudi-group/fbas_analyzer).
+
+
+## Technical highlights
+
+We encode the problem of finding disjoint quorums as a SAT instance.
+We encode the problem of finding a minimal-cardinality splitting set and the problem of finding a minimal-cardinality blocking set as MaxSAT instances.
+We use [pysat](https://pysathq.github.io/) to solve them.
+
+Most SAT solvers expect CNF input, but it is easier to work with full propositional logic (using and, or, implies, not, etc.).
+pysat implements a transformation from propositional logic to CNF, but our benchmarks showed that it is way too slow for our purposes.
+Thus we use our own CNF transformation, which is faster for our use case (see `to_cnf` in [`propositional_logic.py`](./python_fbas/propositional_logic.py)).
+
+When reasoning about a FBAS, we often encounter cardinality constraints that assert that at least k out of n variables must be true.
+To encode this efficiently in propositional logic, we use the totalizer encoding provided by pysat.
+The paper [Efficient CNF Encoding of Boolean Cardinality Constraints](https://citeseerx.ist.psu.edu/document?repid=rep1&type=pdf&doi=a9481bf4ce2b5c20d2e282dd69dcb92bddcc36c9) describes the theory behind it, and it is a nice trick.
+
 ## Usage
 
 Optionally create a virtual environment:
