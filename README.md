@@ -2,17 +2,17 @@
 
 python-fbas is a tool to analyze Federated Byzantine Agreement Systems (FBAS), as used in the Stellar network, using automated constraint solvers like SAT solvers.
 It can find disjoint quorums, minimal-cardinality splitting sets, minimal-cardinality blocking sets, and minimal-cardinality history-critical sets.
-(A minimal history-critical set is a set of validators such that, should they stop publishing valid history, would make it possible to loose network history)
+(A history-critical set is a set of validators such that, together with the validators that currently have history-archive errors, form a quorum; in a worst-case scenario, if those validators have archive issues too, it would be possible to loose network history)
 
 python-fbas seems to be able to handle much larger FBASs than [fbas_analyzer](https://github.com/trudi-group/fbas_analyzer) or the quorum-intersection checker of [stellar-core](https://github.com/stellar/stellar-core/).
 
 ## Technical highlights
 
 We encode the problem of finding disjoint quorums as a SAT instance.
-We encode the problem of finding a minimal-cardinality splitting set and the problem of finding a minimal-cardinality blocking set as MaxSAT instances.
-We use [pysat](https://pysathq.github.io/) to solve them.
+For the other problems, we are after minimal sets with some properties. In this case we encode the problem as a MaxSAT instances.
+We use [pysat](https://pysathq.github.io/) to solve the SAT/MaxSAT instances.
 
-Most SAT solvers expect CNF input, but it is easier to work with full propositional logic (using and, or, implies, not, etc.).
+Most SAT solvers expect input in conjunctive normal form (CNF), but it is easier to work with full propositional logic (using and, or, implies, not, etc. without restrictions).
 pysat implements a transformation from propositional logic to CNF, but our benchmarks showed that it is way too slow for our purposes.
 Thus we use our own CNF transformation, which is faster for our use case (see `to_cnf` in [`propositional_logic.py`](./python_fbas/propositional_logic.py)).
 
