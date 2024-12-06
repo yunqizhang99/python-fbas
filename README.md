@@ -2,7 +2,6 @@
 
 python-fbas is a tool to analyze Federated Byzantine Agreement Systems (FBAS), as used in the Stellar network, using automated constraint solvers like SAT solvers.
 It can find disjoint quorums, minimal-cardinality splitting sets, minimal-cardinality blocking sets, and minimal-cardinality history-critical sets.
-(A history-critical set is a set of validators such that, together with the validators that currently have history-archive errors, form a quorum; in a worst-case scenario, if those validators have archive issues too, it would be possible to loose network history)
 
 python-fbas seems to be able to handle much larger FBASs than [fbas_analyzer](https://github.com/trudi-group/fbas_analyzer) or the quorum-intersection checker of [stellar-core](https://github.com/stellar/stellar-core/).
 
@@ -72,7 +71,9 @@ For example, to restrict the FBAS to what is reachable from one of SDF's validat
 ```
 python-fbas --group-by=homeDomain --validator=GCGB2S2KGYARPVIA37HYZXVRM2YZUEXA6S33ZU5BUDC6THSB62LZSTYH min-splitting-set
 ```
-To determine the minimal number of nodes that, should they stop publishing history, might cause total loss of history:
+
+A history-critical set is a set of validators such that, together with the validators that currently have history-archive errors, form a quorum; in a worst-case scenario, if this quorum does not publish useable history archives, it would be possible to loose network history.
+To find a minimal-cardinality history-critical set:
 ```
 python-fbas --fbas=stellarbeat history-loss
 ```
