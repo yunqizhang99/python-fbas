@@ -194,11 +194,11 @@ def find_minimal_splitting_set(fbas: FBASGraph) ->  Optional[Tuple[Collection,Co
     result = maximize(wcnf)
 
     if not result:
-        print("No splitting set found!")
+        logging.info("No splitting set found!")
         return None
     else:
         cost, model = result
-        print(f"Found minimal-cardinality splitting set, size is {cost}")
+        logging.info("Found minimal-cardinality splitting set, size is %s", cost)
         model = list(model)
         ss = get_faulty(model)
         if not config.group_by:
@@ -299,7 +299,7 @@ def find_minimal_blocking_set(fbas: FBASGraph) -> Optional[Collection[str]]:
     result = maximize(wcnf)
 
     if not result:
-        print("No blocking set found!")
+        logging.info("No blocking set found!")
         return None
     else:
         cost, model = result

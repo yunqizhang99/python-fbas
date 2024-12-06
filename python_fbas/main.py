@@ -113,11 +113,17 @@ def main():
             sys.exit(0)
     elif args.command == 'min-splitting-set':
         result = find_minimal_splitting_set(fbas)
+        if not result:
+            print("No splitting set found")
+            sys.exit(0)
         print(f"Minimal splitting-set cardinality is: {len(result[0])}")
         print(f"Example:\n{with_names(result[0]) if not config.group_by else result[0]}\nsplits quorums\n{with_names(result[1])}\nand\n{with_names(result[2])}")
         sys.exit(0)
     elif args.command == 'min-blocking-set':
         result = find_minimal_blocking_set(fbas)
+        if not result:
+            print("No blocking set found")
+            sys.exit(0)
         print(f"Minimal blocking-set cardinality is: {len(result)}")
         print(f"Example:\n{with_names(result) if not config.group_by else result}")
         sys.exit(0)
