@@ -404,6 +404,12 @@ def find_min_quorum(fbas: FBASGraph) -> Collection[str]:
     Find a minimal quorum in the FBAS graph using pyqbf.
     """
     
+    # TODO: only look inside sccs
+
+    if not fbas.validators:
+        logging.info("The FBAS is empty!")
+        return []
+
     # TODO: reuse in_quorum and get_quorum from find_disjoint_quorums
     quorum_tag:int = 1
 
@@ -445,10 +451,9 @@ def find_min_quorum(fbas: FBASGraph) -> Collection[str]:
     pcnf = PCNF(from_clauses=qa_clauses + qb_clauses)
 
     qa_atoms:set[int] = atoms(qa_clauses)
-    qb_vertex_atoms:set[int] = set(abs(variables[in_quorum('B', n).identifier]) for n in fbas.validators)
-    qb_tseitin_atoms:set[int] = atoms(qb_clauses) - qb_vertex_atoms
+    qb_vertex_atoms:set[int] = set(abs(variables[in_quorum('B', n).identifier]) for n in fbas.vertices())
+    qb_tseitin_atoms:set[int] = atoms(qb_clauses) - (qb_vertex_atoms | qa_atoms)
 
-    # TODO: fix quantification
     pcnf.exists(*list(qa_atoms)).forall(*list(qb_vertex_atoms)).exists(*list(qb_tseitin_atoms))
     
     # solvers: 'depqbf', 'qute', 'rareqs', 'qfun', 'caqe'

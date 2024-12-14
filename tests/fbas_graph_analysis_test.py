@@ -84,4 +84,16 @@ def test_min_quorum():
     fbas1 = FBASGraph()
     for v in ['PK1','PK2','PK3','PK4']:
         fbas1.update_validator(v, qset1)
-    find_min_quorum(fbas1)
+    assert len(find_min_quorum(fbas1)) == 3
+
+def test_min_quorum_2():
+    data = get_test_data_list()
+    for f,d in data.items():
+        if "validators" in f:
+            logging.info("skipping %s", f)
+            continue
+        else:
+            logging.info("loading graph of %s", f)
+            fbas_graph = FBASGraph.from_json(d)
+            find_min_quorum(fbas_graph)
+

@@ -7,7 +7,7 @@ import argparse
 import logging
 import sys
 from python_fbas.fbas_graph import FBASGraph
-from python_fbas.fbas_graph_analysis import find_disjoint_quorums, find_minimal_splitting_set, find_minimal_blocking_set, min_history_loss_critical_set
+from python_fbas.fbas_graph_analysis import find_disjoint_quorums, find_minimal_splitting_set, find_minimal_blocking_set, min_history_loss_critical_set, find_min_quorum
 from python_fbas.stellarbeat_data import get_validators as get_stellarbeat_validators
 import python_fbas.config as config
 
@@ -51,7 +51,7 @@ def main():
     subparsers.add_parser('min-blocking-set', help="Find minimal-cardinality blocking set")
     subparsers.add_parser('history-loss', help="Find a minimal-cardinality set of validators such that, should they stop publishing valid history, would allow a full quorum to get ahead without publishing valid history (in which case history may be lost)")
 
-    # subparsers.add_parser('intersection-check-to-dimacs', help="Create a DIMACS file containing a problem that is satisfiable if and only there are disjoint quorums")
+    subparsers.add_parser('min-quorum', help="Find minimal-cardinality quorum")
 
     args = parser.parse_args()
 
@@ -135,6 +135,10 @@ def main():
         print(f"Minimal history-loss critical set cardinality is: {len(result[0])}")
         print(f"Example min critical set:\n{with_names(result[0])}")
         print(f"Corresponding history-less quorum:\n {with_names(result[1])}")
+        sys.exit(0)
+    elif args.command == 'min-quorum':
+        result = find_min_quorum(fbas)
+        print(f"Example min quorum:\n{with_names(result)}")
         sys.exit(0)
     else:
         parser.print_help()
