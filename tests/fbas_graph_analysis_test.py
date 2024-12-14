@@ -2,7 +2,7 @@ import logging
 from test_utils import get_test_data_list, get_validators_from_test_fbas
 from python_fbas.fbas_graph import FBASGraph
 from python_fbas import config
-from python_fbas.fbas_graph_analysis import find_minimal_splitting_set, find_disjoint_quorums, find_minimal_blocking_set
+from python_fbas.fbas_graph_analysis import find_minimal_splitting_set, find_disjoint_quorums, find_minimal_blocking_set, find_min_quorum
 
 def test_qi_():
     config.card_encoding = 'totalizer'
@@ -78,3 +78,10 @@ def test_min_blocking_set_4():
         fbas_graph = FBASGraph.from_json(d)
         config.card_encoding = 'totalizer'
         find_minimal_blocking_set(fbas_graph)
+
+def test_min_quorum():
+    qset1 = {'threshold':3, 'validators':['PK1','PK2','PK3','PK4'],  'innerQuorumSets': []}
+    fbas1 = FBASGraph()
+    for v in ['PK1','PK2','PK3','PK4']:
+        fbas1.update_validator(v, qset1)
+    find_min_quorum(fbas1)

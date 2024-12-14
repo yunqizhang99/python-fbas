@@ -11,8 +11,10 @@ from pysat.solvers import Solver
 from pysat.formula import CNF, WCNF
 from pysat.examples.lsu import LSU # MaxSAT algorithm
 from pysat.examples.rc2 import RC2 # MaxSAT algorithm
+from pyqbf.formula import PCNF
+from pyqbf.solvers import Solver as QSolver
 from python_fbas.fbas_graph import FBASGraph
-from python_fbas.propositional_logic import And, Or, Implies, Atom, Formula, Card, Not, variables_inv, to_cnf
+from python_fbas.propositional_logic import And, Or, Implies, Atom, Formula, Card, Not, variables, variables_inv, to_cnf, Clauses
 import python_fbas.config as config
 
 # TODO: implement grouping (e.g. by homeDomain)
@@ -401,4 +403,62 @@ def find_min_quorum(fbas: FBASGraph) -> Collection[str]:
     """
     Find a minimal quorum in the FBAS graph using pyqbf.
     """
-    return []
+    
+    # TODO: reuse in_quorum and get_quorum from find_disjoint_quorums
+    quorum_tag:int = 1
+
+    def in_quorum(q:str, n:str) -> Atom:
+        """Returns an atom denoting whether node n is in quorum q."""
+        return Atom((quorum_tag, q, n))
+    
+    def get_quorum_(atoms:list[int], q:str, fbas:FBASGraph) -> list[str]:
+        """Given a list of atoms, returns the validators in quorum q."""
+        return [variables_inv[v][2] for v in set(atoms) & set(variables_inv.keys())
+                if variables_inv[v][0] == quorum_tag and variables_inv[v][1] == q
+                    and variables_inv[v][2] in fbas.validators]
+    
+    def quorum_constraints(q:str) -> list[Formula]:
+        constraints:list[Formula] = []
+        constraints += [Or(*[in_quorum(q, n) for n in fbas.validators if fbas.threshold(n) >= 0])]
+        for v in fbas.vertices():
+            if fbas.threshold(v) > 0:
+                vs = [in_quorum(q, n) for n in fbas.graph.successors(v)]
+                constraints.append(Implies(in_quorum(q, v), Card(fbas.threshold(v), *vs)))
+            if fbas.threshold(v) == 0:
+                continue # no constraints for this vertex
+            if fbas.threshold(v) < 0: 
+                # to be conservative (i.e. create as many quorums as possible), no constraints
+                continue
+        return constraints
+
+    def atoms(cnf:Clauses) -> set[int]:
+        return set([abs(l) for clause in cnf for l in clause])
+
+    qa_constraints:list[Formula] = quorum_constraints('A')
+
+    qb_quorum = And(*quorum_constraints('B'))
+    qb_subset_qa = And(*([Or(Not(in_quorum('B', n)), in_quorum('A', n)) for n in fbas.validators] + [Or(And(in_quorum('A', n), Not(in_quorum('B', n)))) for n in fbas.validators]))
+    qb_constraints = Implies(qb_subset_qa, Not(qb_quorum))
+
+    qa_clauses = to_cnf(qa_constraints)
+    qb_clauses = to_cnf(qb_constraints)
+    pcnf = PCNF(from_clauses=qa_clauses + qb_clauses)
+
+    qa_atoms:set[int] = atoms(qa_clauses)
+    qb_vertex_atoms:set[int] = set(abs(variables[in_quorum('B', n).identifier]) for n in fbas.validators)
+    qb_tseitin_atoms:set[int] = atoms(qb_clauses) - qb_vertex_atoms
+
+    # TODO: fix quantification
+    pcnf.exists(*list(qa_atoms)).forall(*list(qb_vertex_atoms)).exists(*list(qb_tseitin_atoms))
+    
+    # solvers: 'depqbf', 'qute', 'rareqs', 'qfun', 'caqe'
+    s = QSolver(name='depqbf', bootstrap_with=pcnf)
+    res = s.solve()
+    if res:
+        model = s.get_model()
+        qa = get_quorum_(model, 'A', fbas)
+        logging.info("Minimal quorum found: %s", qa)
+        return qa
+    else:
+        logging.info("No minimal quorum found!")
+        return []
