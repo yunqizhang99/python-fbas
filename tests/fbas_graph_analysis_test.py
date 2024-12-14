@@ -53,6 +53,14 @@ def test_min_splitting_set_2():
     fbas2 = FBASGraph.from_json(get_validators_from_test_fbas('circular_2.json'))
     assert find_minimal_splitting_set(fbas2)[0] == ['PK2']
 
+def test_min_splitting_set():
+    data = get_test_data_list()
+    for f,d in data.items():
+        logging.info("loading graph of %s", f)
+        fbas_graph = FBASGraph.from_json(d)
+        config.card_encoding = 'totalizer'
+        find_minimal_splitting_set(fbas_graph)
+
 def test_min_blocking_set_3():
     qset1 = {'threshold':3, 'validators':['PK1','PK2','PK3','PK4'],  'innerQuorumSets': []}
     fbas1 = FBASGraph()
@@ -66,8 +74,7 @@ def test_min_blocking_set_3():
 def test_min_blocking_set_4():
     data = get_test_data_list()
     for f,d in data.items():
-        if f == 'top_tier.json':
-            logging.info("loading graph of %s", f)
-            fbas_graph = FBASGraph.from_json(d)
-            config.card_encoding = 'totalizer'
-            find_minimal_blocking_set(fbas_graph)
+        logging.info("loading graph of %s", f)
+        fbas_graph = FBASGraph.from_json(d)
+        config.card_encoding = 'totalizer'
+        find_minimal_blocking_set(fbas_graph)

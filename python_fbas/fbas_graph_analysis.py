@@ -45,8 +45,8 @@ def find_disjoint_quorums(fbas: FBASGraph) -> Optional[Tuple[Collection, Collect
     start_time = time.time()
     constraints : list[Formula] = []
     for q in ['A', 'B']: # our two quorums
-        # the quorum must be non-empty:
-        constraints += [Or(*[in_quorum(q, n) for n in fbas.validators])]
+        # the quorum must contain at least one validator for which we have a qset:
+        constraints += [Or(*[in_quorum(q, n) for n in fbas.validators if fbas.threshold(n) >= 0])]
         # then, we add the threshold constraints:
         for v in fbas.vertices():
             if fbas.threshold(v) > 0:
@@ -54,8 +54,9 @@ def find_disjoint_quorums(fbas: FBASGraph) -> Optional[Tuple[Collection, Collect
                 constraints.append(Implies(in_quorum(q, v), Card(fbas.threshold(v), *vs)))
             if fbas.threshold(v) == 0:
                 continue # no constraints for this vertex
-            if fbas.threshold(v) < 0: # validators for which we don't have a threshold cannot be in the quorum:
-                constraints.append(Not(in_quorum(q, v)))
+            if fbas.threshold(v) < 0: 
+                # to be conservative (i.e. create as many quorums as possible), no constraints
+                continue
     # no validator can be in both quorums:
     for v in fbas.validators:
         constraints += [Or(Not(in_quorum('A', v)), Not(in_quorum('B', v)))]
@@ -150,8 +151,8 @@ def find_minimal_splitting_set(fbas: FBASGraph) ->  Optional[Tuple[Collection,Co
 
     # now we create the constraints:
     for q in ['A', 'B']: # for each of our two quorums
-        # the quorum contains at least one non-faulty validator:
-        constraints += [Or(*[And(in_quorum(q, n), Not(faulty(n))) for n in fbas.validators])]
+        # the quorum contains at least one non-faulty validator for which we have a qset:
+        constraints += [Or(*[And(in_quorum(q, n), Not(faulty(n))) for n in fbas.validators if fbas.threshold(n) >= 0])]
         # then, we add the threshold constraints:
         for v in fbas.vertices():
             if fbas.threshold(v) > 0:
@@ -164,8 +165,9 @@ def find_minimal_splitting_set(fbas: FBASGraph) ->  Optional[Tuple[Collection,Co
                     constraints.append(Implies(in_quorum(q, v), Card(fbas.threshold(v), *vs)))
             if fbas.threshold(v) == 0:
                 continue # no constraints for this vertex
-            if fbas.threshold(v) < 0: # validators for which we don't have a threshold cannot be in the quorum:
-                constraints.append(Not(in_quorum(q, v)))
+            if fbas.threshold(v) < 0:
+                # to be conservative (i.e. create as many quorums as possible), no constraints
+                continue
     # add the constraint that no non-faulty validator can be in both quorums:
     for v in fbas.validators:
         constraints += [Or(faulty(v), Not(in_quorum('A', v)), Not(in_quorum('B', v)))]
@@ -229,6 +231,10 @@ def find_minimal_blocking_set(fbas: FBASGraph) -> Optional[Collection[str]]:
 
     start_time = time.time()
 
+    if not fbas.validators:
+        logging.info("No validators in the FBAS graph!")
+        return None
+
     constraints : list[Formula] = []
 
     faulty_tag:int = 0
@@ -258,14 +264,19 @@ def find_minimal_blocking_set(fbas: FBASGraph) -> Optional[Collection[str]]:
             may_block = [And(blocked(n), lt(n,v)) for n in fbas.graph.successors(v)]
             constraints.append(Implies(Card(blocking_threshold(v), *may_block), blocked(v)))
             constraints.append(Implies(And(blocked(v), Not(faulty(v))), Card(blocking_threshold(v), *may_block)))
-        if fbas.threshold(v) < 0:
+        if fbas.threshold(v) == 0:
+            # never blocked
             constraints.append(Not(blocked(v)))
+        if fbas.threshold(v) < 0:
+            # to be conservative, could be blocked by anything; so, no constraints
+            continue
 
     # the lt relation must be a partial order (anti-symmetric and transitive). For performance, lt
     # only relates vertices that are in the strongly connected components below (why this is sound is
     # a little subtle; it has to do with the note below)
     sccs = [scc for scc in nx.strongly_connected_components(fbas.graph)
-            if fbas.is_quorum([v for v in set(scc) & fbas.validators])] # NOTE contains the union of all minimal quorums
+            if any(fbas.threshold(v) >= 0 for v in set(scc))
+                and fbas.is_quorum([v for v in set(scc) & fbas.validators])] # NOTE contains the union of all minimal quorums
     assert sccs
     k = set().union(*sccs)
     for v1 in k:
@@ -312,7 +323,8 @@ def find_minimal_blocking_set(fbas: FBASGraph) -> Optional[Collection[str]]:
         else:
             logging.info("Minimal-cardinality blocking set: %s", [g for g in s if g in groups])
         vs = [v for v in s if v not in groups]
-        assert fbas.closure(vs) == fbas.validators
+        no_qset = {v for v in fbas.validators if fbas.threshold(v) < 0}
+        assert fbas.closure(vs) | no_qset == fbas.validators
         for vs2 in combinations(vs, cost-1):
             assert fbas.closure(vs2) != fbas.validators
         if not config.group_by:
@@ -352,8 +364,8 @@ def min_history_loss_critical_set(fbas: FBASGraph) -> Tuple[Collection[str], Col
         constraints.append(Implies(in_critical_quorum(v), Not(has_hist_error(v)), in_crit_no_error(v)))
         constraints.append(Implies(in_crit_no_error(v), And(in_critical_quorum(v), Not(has_hist_error(v)))))
 
-    # the critical quorum is a non-empty quorum:
-    constraints += [Or(*[in_critical_quorum(v) for v in fbas.validators])]
+    # the critical contains at least one validator for which we have a qset:
+    constraints += [Or(*[in_critical_quorum(v) for v in fbas.validators if fbas.threshold(v) >= 0])]
     for v in fbas.vertices():
         if fbas.threshold(v) > 0:
             vs = [in_critical_quorum(n) for n in fbas.graph.successors(v)]
@@ -384,3 +396,9 @@ def min_history_loss_critical_set(fbas: FBASGraph) -> Tuple[Collection[str], Col
         logging.info("Minimal-cardinality history-critical set: %s", [fbas.with_name(v) for v in min_critical])
         logging.info("Quorum: %s", [fbas.with_name(v) for v in quorum])
         return (min_critical, quorum)
+    
+def find_min_quorum(fbas: FBASGraph) -> Collection[str]:
+    """
+    Find a minimal quorum in the FBAS graph using pyqbf.
+    """
+    return []
