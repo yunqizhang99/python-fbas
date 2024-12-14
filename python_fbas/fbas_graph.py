@@ -448,6 +448,7 @@ class FBASGraph:
             else:
                 empty = self.add_qset({'threshold': 0, 'validators': [], 'innerQuorumSets': []})
                 self.graph.add_edge(new_vertex, empty)
+            # TODO: can't we remove the children of n?
             # if some parents are validators, then we need to add a qset vertex:
             if any(p in self.validators for p in parents):
                 new_qset = self.add_qset({'threshold': 1, 'validators': [new_vertex], 'innerQuorumSets': []})

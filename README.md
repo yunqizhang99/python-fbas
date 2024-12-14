@@ -69,7 +69,7 @@ You might get surprising results due to a single validators having a weird confi
 In this case it helps to restrict the analysis to the validators that are reachable from some validator you care about.
 For example, to restrict the FBAS to what is reachable from one of SDF's validators:
 ```
-python-fbas --group-by=homeDomain --validator=GCGB2S2KGYARPVIA37HYZXVRM2YZUEXA6S33ZU5BUDC6THSB62LZSTYH min-splitting-set
+python-fbas --group-by=homeDomain --reachable-from GCGB2S2KGYARPVIA37HYZXVRM2YZUEXA6S33ZU5BUDC6THSB62LZSTYH min-splitting-set
 ```
 
 A history-critical set is a set of validators such that, together with the validators that currently have history-archive errors, form a quorum; in a worst-case scenario, if this quorum does not publish useable history archives, it would be possible to loose network history.
@@ -88,4 +88,13 @@ To update the cache:
 ```
 python-fbas update-stellarbeat-cache
 ```
+
+** TODO
+
+Reporting that tolerates "bad apples".
+For example, the result of the analysis could be that nodes X and Y have forked, but the remaning nodes are intertwined with safety threshold S and liveness threshold L.
+We could potentially do this with UNSAT minimization.
+
+Take advantage of symmetry: collapse diamonds but keep track of how many nodes need to be corrupted to break self-intertwinedness of the new virtual validators.
+We can use that as weight in the MaxSAT problem.
 

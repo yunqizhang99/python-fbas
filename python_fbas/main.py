@@ -28,7 +28,7 @@ def main():
     
     # specify a data source:
     parser.add_argument('--fbas', default='stellarbeat', help="Where to find the description of the FBAS to analyze (must be 'stellarbeat' or a path to a JSON file)")
-    parser.add_argument('--validator', default=None, help="Restrict the FBAS to what's reachable from this validator")
+    parser.add_argument('--reachable-from', default=None, help="Restrict the FBAS to what's reachable from the provided validator")
     parser.add_argument('--group-by', default=None, help="Group by the provided field (e.g. min-splitting-set with --group-by=homeDomain will compute the minimum number of home domains to corrupt to create disjoint quorums)")
 
     parser.add_argument('--cardinality-encoding', default='totalizer', help="Cardinality encoding, either 'naive' or 'totalizer'")
@@ -90,8 +90,8 @@ def main():
     fbas = _load_fbas_graph(args)
     if config.group_by is not None and not all(config.group_by in fbas.vertice_attrs(v) for v in fbas.validators):
         raise ValueError(f"Some validators do not have the \"{config.group_by}\" attribute")
-    if args.validator:
-        fbas = fbas.restrict_to_reachable(args.validator)
+    if args.reachable_from:
+        fbas = fbas.restrict_to_reachable(args.reachable_from)
 
     def with_names(vs:list[str]) -> list[str]:
         return [fbas.with_name(v) for v in vs]
