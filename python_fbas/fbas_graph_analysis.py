@@ -17,7 +17,41 @@ from python_fbas.fbas_graph import FBASGraph
 from python_fbas.propositional_logic import And, Or, Implies, Atom, Formula, Card, Not, variables, variables_inv, to_cnf, Clauses
 import python_fbas.config as config
 
-# TODO: implement grouping (e.g. by homeDomain)
+def contains_quorum(s:set[str], fbas: FBASGraph) -> bool:
+    """
+    Check if s is a quorum in the FBAS graph.
+    """
+    assert s <= fbas.validators
+    constraints:list[Formula] = []
+    # the quorum must contain at least one validator from s (and for which we have a qset):
+    constraints += [Or(*[Atom(v) for v in s if fbas.threshold(v) >= 0])]
+    # no validators outside s are in the quorum:
+    constraints += [And(*[Not(Atom(v)) for v in fbas.validators if v not in s])]
+    # then, we add the threshold constraints (TODO factor this out):
+    for v in fbas.vertices():
+        if fbas.threshold(v) > 0:
+            vs = [Atom(n) for n in fbas.graph.successors(v)]
+            constraints.append(Implies(Atom(v), Card(fbas.threshold(v), *vs)))
+        if fbas.threshold(v) == 0:
+            continue # no constraints for this vertex
+        if fbas.threshold(v) < 0:
+            # to be conservative (i.e. create as many quorums as possible), no constraints
+            continue
+
+    # TODO factor out calling the solver and printing runtime
+    clauses = to_cnf(constraints)
+    solver = Solver(bootstrap_with=clauses, name=config.sat_solver)
+    start_time = time.time()
+    res = solver.solve()
+    end_time = time.time()
+    logging.info("Solving time: %s", end_time - start_time)
+    if res:
+        model = solver.get_model()
+        q = [variables_inv[v] for v in set(model) & set(variables_inv.keys()) if variables_inv[v] in fbas.validators]
+        logging.info("Quorum %s is inside %s", q, s)
+    else:
+        logging.info("No quorum found in %s", s)
+    return res
 
 def find_disjoint_quorums(fbas: FBASGraph) -> Optional[Tuple[Collection, Collection]]:
     """
@@ -273,12 +307,12 @@ def find_minimal_blocking_set(fbas: FBASGraph) -> Optional[Collection[str]]:
             # to be conservative, could be blocked by anything; so, no constraints
             continue
 
-    # the lt relation must be a partial order (anti-symmetric and transitive). For performance, lt
-    # only relates vertices that are in the strongly connected components below (why this is sound is
-    # a little subtle; it has to do with the note below)
+    # The lt relation must be a partial order (anti-symmetric and transitive). For performance, lt
+    # only relates vertices that are in the strongly connected components below.
+    # Why this is sound is not super clear.
     sccs = [scc for scc in nx.strongly_connected_components(fbas.graph)
             if any(fbas.threshold(v) >= 0 for v in set(scc))
-                and fbas.is_quorum([v for v in set(scc) & fbas.validators])] # NOTE contains the union of all minimal quorums
+                and contains_quorum(set([v for v in set(scc) & fbas.validators]), fbas)] # NOTE contains the union of all minimal quorums
     assert sccs
     k = set().union(*sccs)
     for v1 in k:
@@ -403,14 +437,13 @@ def find_min_quorum(fbas: FBASGraph) -> Collection[str]:
     """
     Find a minimal quorum in the FBAS graph using pyqbf.
     """
-    
-    # TODO: only look inside sccs
+
+    # TODO: look only in sccs that contain a quorum
 
     if not fbas.validators:
         logging.info("The FBAS is empty!")
         return []
 
-    # TODO: reuse in_quorum and get_quorum from find_disjoint_quorums
     quorum_tag:int = 1
 
     def in_quorum(q:str, n:str) -> Atom:

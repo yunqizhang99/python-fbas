@@ -2,7 +2,7 @@ import logging
 from test_utils import get_test_data_list, get_validators_from_test_fbas
 from python_fbas.fbas_graph import FBASGraph
 from python_fbas import config
-from python_fbas.fbas_graph_analysis import find_minimal_splitting_set, find_disjoint_quorums, find_minimal_blocking_set, find_min_quorum
+from python_fbas.fbas_graph_analysis import find_minimal_splitting_set, find_disjoint_quorums, find_minimal_blocking_set, find_min_quorum, contains_quorum
 
 def test_qi_():
     config.card_encoding = 'totalizer'
@@ -97,3 +97,19 @@ def test_min_quorum_2():
             fbas_graph = FBASGraph.from_json(d)
             find_min_quorum(fbas_graph)
 
+def test_contains_quorum():
+    qset1 = {'threshold':3, 'validators':['PK1','PK2','PK3','PK4'],  'innerQuorumSets': []}
+    fbas1 = FBASGraph()
+    for v in ['PK1','PK2','PK3','PK4']:
+        fbas1.update_validator(v, qset1)
+    assert contains_quorum({'PK1','PK2','PK3','PK4'}, fbas1)
+    assert contains_quorum({'PK1','PK3','PK4'}, fbas1)
+    assert not contains_quorum({'PK1','PK2'}, fbas1)
+    assert not contains_quorum({'PK1'}, fbas1)
+    assert not contains_quorum(set(), fbas1)
+    fbas2 = FBASGraph.from_json(get_validators_from_test_fbas('circular_1.json'))
+    assert contains_quorum({'PK1','PK2'}, fbas2)
+    assert not contains_quorum({'PK1'}, fbas2)
+    fbas2 = FBASGraph.from_json(get_validators_from_test_fbas('circular_2.json'))
+    assert not contains_quorum({'PK1','PK2'}, fbas2)
+    assert contains_quorum({'PK1','PK3'}, fbas2)
