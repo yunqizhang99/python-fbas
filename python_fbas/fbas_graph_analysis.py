@@ -359,8 +359,9 @@ def find_minimal_blocking_set(fbas: FBASGraph) -> Optional[Collection[str]]:
             logging.info("Minimal-cardinality blocking set: %s", [g for g in s if g in groups])
         vs = [v for v in s if v not in groups]
         no_qset = {v for v in fbas.validators if fbas.threshold(v) < 0}
-        assert fbas.closure(vs) | no_qset == fbas.validators
-        for vs2 in combinations(vs, cost-1):
+        all_ = set(vs) | no_qset
+        assert fbas.closure(all_) == fbas.validators
+        for vs2 in combinations(all_, cost-1+len(no_qset)):
             assert fbas.closure(vs2) != fbas.validators
         if not config.group_by:
             return s
