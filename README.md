@@ -88,13 +88,3 @@ To update the cache:
 ```
 python-fbas update-stellarbeat-cache
 ```
-
-** TODO
-
-Reporting that tolerates "bad apples".
-For example, the result of the analysis could be that nodes X and Y have forked, but the remaning nodes are intertwined with safety threshold S and liveness threshold L.
-We could potentially do this with UNSAT minimization.
-
-Take advantage of symmetry: collapse diamonds but keep track of how many nodes need to be corrupted to break self-intertwinedness of the new virtual validators.
-We can use that as weight in the MaxSAT problem.
-

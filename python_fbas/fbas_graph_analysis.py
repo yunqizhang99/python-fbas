@@ -308,18 +308,17 @@ def find_minimal_blocking_set(fbas: FBASGraph) -> Optional[Collection[str]]:
             continue
 
     # The lt relation must be a partial order (anti-symmetric and transitive). For performance, lt
-    # only relates vertices that are in the strongly connected components below.
-    # Why this is sound is not super clear.
+    # only relates vertices that are in the same strongly connected components (as otherwise there
+    # is no possible cycle in the blocking relation).
     sccs = [scc for scc in nx.strongly_connected_components(fbas.graph)
-            if any(fbas.threshold(v) >= 0 for v in set(scc))
-                and contains_quorum(set([v for v in set(scc) & fbas.validators]), fbas)] # NOTE contains the union of all minimal quorums
+            if any(fbas.threshold(v) >= 0 for v in set(scc))]
     assert sccs
-    k = set().union(*sccs)
-    for v1 in k:
-        constraints.append(Not(lt(v1, v1)))
-        for v2 in k:
-            for v3 in k:
-                constraints.append(Implies(And(lt(v1, v2), lt(v2, v3)), lt(v1, v3)))
+    for scc in sccs:
+        for v1 in scc:
+            constraints.append(Not(lt(v1, v1)))
+            for v2 in scc:
+                for v3 in scc:
+                    constraints.append(Implies(And(lt(v1, v2), lt(v2, v3)), lt(v1, v3)))
     
     groups = set()
     if config.group_by:
