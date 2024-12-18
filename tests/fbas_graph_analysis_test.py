@@ -20,6 +20,12 @@ def test_qi_():
     fbas2 = FBASGraph.from_json(get_validators_from_test_fbas('conflicted.json'))
     assert find_disjoint_quorums(fbas2)
 
+def test_qi_missing():
+    fbas = FBASGraph.from_json(get_validators_from_test_fbas('missing_1.json'))
+    assert not find_disjoint_quorums(fbas)
+    fbas = FBASGraph.from_json(get_validators_from_test_fbas('missing_2.json'))
+    assert find_disjoint_quorums(fbas)
+
 def test_qi_all():
     data = get_test_data_list()
     for f,d in data.items():
