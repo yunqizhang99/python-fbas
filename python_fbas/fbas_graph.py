@@ -253,7 +253,7 @@ class FBASGraph:
                     c not in self.validators and self.is_qset_sat(c, s)
                     or c in self.validators and c in s)
     
-    def is_sat(self, n: Any, s: Collection) -> bool:
+    def is_sat(self, n: Any, s: Collection, over_approximate=True) -> bool:
         """
         Returns True if and only if n's agreement requirements are satisfied by s.
         """
@@ -261,11 +261,11 @@ class FBASGraph:
         if self.threshold(n) == 0:
             return True
         elif self.threshold(n) < 0:
-            return False
+            return over_approximate
         else:
             return self.is_qset_sat(self.qset_vertex_of(n), s)
 
-    def is_quorum(self, vs: Collection) -> bool:
+    def is_quorum(self, vs: Collection, over_approximate=True) -> bool:
         """
         Returns True if and only if s is a non-empty quorum.
         Not efficient.
@@ -276,7 +276,7 @@ class FBASGraph:
         if not any([self.threshold(v) >= 0 for v in vs]): # we have a qset for at least one validator
             logging.error("Quorum made of validators which do not have a qset: %s", vs)
             assert False
-        return all(self.is_sat(v, vs) for v in vs)
+        return all(self.is_sat(v, vs, over_approximate) for v in vs)
     
     def find_disjoint_quorums(self) -> Optional[tuple[set, set]]:
         """
@@ -284,7 +284,7 @@ class FBASGraph:
         Warning: use only for very small fbas graphs.
         """
         assert len(self.validators) < 10
-        quorums = [q for q in powerset(list(self.validators)) if self.is_quorum(q)]
+        quorums = [q for q in powerset(list(self.validators)) if self.is_quorum(q, over_approximate=True)]
         return next(((q1, q2) for q1 in quorums for q2 in quorums if not (q1 & q2)), None)
     
     def blocks(self, s : Collection, n : Any) -> bool:

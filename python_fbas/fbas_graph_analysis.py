@@ -126,8 +126,8 @@ def find_disjoint_quorums(fbas: FBASGraph) -> Optional[Tuple[Collection, Collect
         logging.info("Disjoint quorums found")
         logging.info("Quorum A: %s", q1)
         logging.info("Quorum B: %s", q2)
-        assert fbas.is_quorum(q1)
-        assert fbas.is_quorum(q2)
+        assert fbas.is_quorum(q1, over_approximate=True)
+        assert fbas.is_quorum(q2, over_approximate=True)
         assert not set(q1) & set(q2)
         return (q1, q2)
     return None
