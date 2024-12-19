@@ -265,7 +265,7 @@ class FBASGraph:
         else:
             return self.is_qset_sat(self.qset_vertex_of(n), s)
 
-    def is_quorum(self, vs: Collection, over_approximate=True) -> bool:
+    def is_quorum(self, vs: Collection, over_approximate=True, no_requirements:Optional[set[str]]=None) -> bool:
         """
         Returns True if and only if s is a non-empty quorum.
         Not efficient.
@@ -273,10 +273,11 @@ class FBASGraph:
         if not vs:
             return False
         assert set(vs) <= self.validators
-        if not any([self.threshold(v) >= 0 for v in vs]): # we have a qset for at least one validator
-            logging.error("Quorum made of validators which do not have a qset: %s", vs)
+        to_check = (set(vs) - (no_requirements or set()))
+        if not any([self.threshold(v) >= 0 for v in to_check]): # we have a qset for at least one validator
+            logging.error("Quorum made of validators which do not have a qset: %s (%s are excluded)", vs, no_requirements or set())
             assert False
-        return all(self.is_sat(v, vs, over_approximate) for v in vs)
+        return all(self.is_sat(v, vs, over_approximate) for v in to_check)
     
     def find_disjoint_quorums(self) -> Optional[tuple[set, set]]:
         """

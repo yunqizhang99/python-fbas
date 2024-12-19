@@ -4,7 +4,7 @@ SAT-based analysis of FBAS graphs
 
 import logging
 import time
-from typing import Any, Optional, Tuple, Collection
+from typing import Any, Optional, Tuple, Collection, Callable
 from itertools import combinations
 import networkx as nx
 from pysat.solvers import Solver
@@ -17,9 +17,23 @@ from python_fbas.fbas_graph import FBASGraph
 from python_fbas.propositional_logic import And, Or, Implies, Atom, Formula, Card, Not, variables, variables_inv, to_cnf, Clauses
 import python_fbas.config as config
 
+def quorum_constraints(fbas: FBASGraph, make_atom:Callable[str, Atom]) -> list[Formula]:
+    """Returns constraints expressing that the set of true atoms is a quorum"""
+    constraints:list[Formula] = []
+    for v in fbas.vertices():
+        if fbas.threshold(v) > 0:
+            vs = [make_atom(n) for n in fbas.graph.successors(v)]
+            constraints.append(Implies(make_atom(v), Card(fbas.threshold(v), *vs)))
+        if fbas.threshold(v) == 0:
+            continue # no constraints for this vertex
+        if fbas.threshold(v) < 0:
+            # to be conservative (i.e. create as many quorums as possible), no constraints
+            continue
+    return constraints
+
 def contains_quorum(s:set[str], fbas: FBASGraph) -> bool:
     """
-    Check if s is a quorum in the FBAS graph.
+    Check if s contains a quorum.
     """
     assert s <= fbas.validators
     constraints:list[Formula] = []
@@ -27,16 +41,7 @@ def contains_quorum(s:set[str], fbas: FBASGraph) -> bool:
     constraints += [Or(*[Atom(v) for v in s if fbas.threshold(v) >= 0])]
     # no validators outside s are in the quorum:
     constraints += [And(*[Not(Atom(v)) for v in fbas.validators if v not in s])]
-    # then, we add the threshold constraints (TODO factor this out):
-    for v in fbas.vertices():
-        if fbas.threshold(v) > 0:
-            vs = [Atom(n) for n in fbas.graph.successors(v)]
-            constraints.append(Implies(Atom(v), Card(fbas.threshold(v), *vs)))
-        if fbas.threshold(v) == 0:
-            continue # no constraints for this vertex
-        if fbas.threshold(v) < 0:
-            # to be conservative (i.e. create as many quorums as possible), no constraints
-            continue
+    constraints += quorum_constraints(fbas, Atom)
 
     # TODO factor out calling the solver and printing runtime
     clauses = to_cnf(constraints)
@@ -83,16 +88,7 @@ def find_disjoint_quorums(fbas: FBASGraph) -> Optional[Tuple[Collection, Collect
     for q in ['A', 'B']: # our two quorums
         # the quorum must contain at least one validator for which we have a qset:
         constraints += [Or(*[in_quorum(q, n) for n in fbas.validators if fbas.threshold(n) >= 0])]
-        # then, we add the threshold constraints:
-        for v in fbas.vertices():
-            if fbas.threshold(v) > 0:
-                vs = [in_quorum(q, n) for n in fbas.graph.successors(v)]
-                constraints.append(Implies(in_quorum(q, v), Card(fbas.threshold(v), *vs)))
-            if fbas.threshold(v) == 0:
-                continue # no constraints for this vertex
-            if fbas.threshold(v) < 0: 
-                # to be conservative (i.e. create as many quorums as possible), no constraints
-                continue
+        constraints += quorum_constraints(fbas, lambda n: in_quorum(q, n))
     # no validator can be in both quorums:
     for v in fbas.validators:
         constraints += [Or(Not(in_quorum('A', v)), Not(in_quorum('B', v)))]
@@ -236,7 +232,7 @@ def find_minimal_splitting_set(fbas: FBASGraph) ->  Optional[Tuple[Collection,Co
         return None
     else:
         cost, model = result
-        logging.info("Found minimal-cardinality splitting set, size is %s", cost)
+        logging.info("Found minimal-cardinality splitting set of size is %s:", cost)
         model = list(model)
         ss = get_faulty(model)
         if not config.group_by:
@@ -246,6 +242,8 @@ def find_minimal_splitting_set(fbas: FBASGraph) ->  Optional[Tuple[Collection,Co
             logging.info("Minimal-cardinality splitting set (corresponding validators): %s", [fbas.with_name(s) for s in ss if s not in groups])
         q1 = get_quorum_(model, 'A', fbas)
         q2 = get_quorum_(model, 'B', fbas)
+        assert fbas.is_quorum(q1, over_approximate=True, no_requirements=set(ss))
+        assert fbas.is_quorum(q2, over_approximate=True, no_requirements=set(ss))
         logging.info("Quorum A: %s", [fbas.with_name(v) for v in q1])
         logging.info("Quorum B: %s", [fbas.with_name(v) for v in q2])
         if not config.group_by:
@@ -402,14 +400,7 @@ def min_history_loss_critical_set(fbas: FBASGraph) -> Tuple[Collection[str], Col
 
     # the critical contains at least one validator for which we have a qset:
     constraints += [Or(*[in_critical_quorum(v) for v in fbas.validators if fbas.threshold(v) >= 0])]
-    for v in fbas.vertices():
-        if fbas.threshold(v) > 0:
-            vs = [in_critical_quorum(n) for n in fbas.graph.successors(v)]
-            constraints.append(Implies(in_critical_quorum(v), Card(fbas.threshold(v), *vs)))
-        if fbas.threshold(v) == 0:
-            continue # no constraints for this vertex
-        if fbas.threshold(v) < 0:
-            constraints.append(Not(in_critical_quorum(v)))
+    constraints += quorum_constraints(fbas, in_critical_quorum)
 
     wcnf = WCNF()
     wcnf.extend(to_cnf(constraints))
@@ -456,26 +447,18 @@ def find_min_quorum(fbas: FBASGraph) -> Collection[str]:
                 if variables_inv[v][0] == quorum_tag and variables_inv[v][1] == q
                     and variables_inv[v][2] in fbas.validators]
     
-    def quorum_constraints(q:str) -> list[Formula]:
+    def quorum_constraints_(q:str) -> list[Formula]:
         constraints:list[Formula] = []
         constraints += [Or(*[in_quorum(q, n) for n in fbas.validators if fbas.threshold(n) >= 0])]
-        for v in fbas.vertices():
-            if fbas.threshold(v) > 0:
-                vs = [in_quorum(q, n) for n in fbas.graph.successors(v)]
-                constraints.append(Implies(in_quorum(q, v), Card(fbas.threshold(v), *vs)))
-            if fbas.threshold(v) == 0:
-                continue # no constraints for this vertex
-            if fbas.threshold(v) < 0: 
-                # to be conservative (i.e. create as many quorums as possible), no constraints
-                continue
+        constraints += quorum_constraints(fbas, lambda n: in_quorum(q, n))
         return constraints
 
     def atoms(cnf:Clauses) -> set[int]:
         return set([abs(l) for clause in cnf for l in clause])
 
-    qa_constraints:list[Formula] = quorum_constraints('A')
+    qa_constraints:list[Formula] = quorum_constraints_('A')
 
-    qb_quorum = And(*quorum_constraints('B'))
+    qb_quorum = And(*quorum_constraints_('B'))
     qb_subset_qa = And(*([Or(Not(in_quorum('B', n)), in_quorum('A', n)) for n in fbas.validators] + [Or(And(in_quorum('A', n), Not(in_quorum('B', n)))) for n in fbas.validators]))
     qb_constraints = Implies(qb_subset_qa, Not(qb_quorum))
 
