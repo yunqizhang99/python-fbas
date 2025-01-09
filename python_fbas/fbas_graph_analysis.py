@@ -31,6 +31,15 @@ def quorum_constraints(fbas: FBASGraph, make_atom:Callable[str, Atom]) -> list[F
             continue
     return constraints
 
+def solve_constraints(constraints:list[Formula]) -> Tuple[bool, Solver]:
+    clauses = to_cnf(constraints)
+    solver = Solver(bootstrap_with=clauses, name=config.sat_solver)
+    start_time = time.time()
+    res = solver.solve()
+    end_time = time.time()
+    logging.info("Solving time: %s", end_time - start_time)
+    return res, solver
+
 def contains_quorum(s:set[str], fbas: FBASGraph) -> bool:
     """
     Check if s contains a quorum.
@@ -43,13 +52,7 @@ def contains_quorum(s:set[str], fbas: FBASGraph) -> bool:
     constraints += [And(*[Not(Atom(v)) for v in fbas.validators if v not in s])]
     constraints += quorum_constraints(fbas, Atom)
 
-    # TODO factor out calling the solver and printing runtime
-    clauses = to_cnf(constraints)
-    solver = Solver(bootstrap_with=clauses, name=config.sat_solver)
-    start_time = time.time()
-    res = solver.solve()
-    end_time = time.time()
-    logging.info("Solving time: %s", end_time - start_time)
+    res, solver = solve_constraints(constraints)
     if res:
         model = solver.get_model()
         q = [variables_inv[v] for v in set(model) & set(variables_inv.keys()) if variables_inv[v] in fbas.validators]
@@ -99,13 +102,8 @@ def find_disjoint_quorums(fbas: FBASGraph) -> Optional[Tuple[Collection, Collect
     end_time = time.time()
     logging.info("Time to convert to CNF: %s", end_time - start_time)
 
-    # now call the solver:
-    s = Solver(bootstrap_with=clauses, name=config.sat_solver)
-    start_time = time.time()
-    res = s.solve()
-    end_time = time.time()
-    logging.info("Solving time: %s", end_time - start_time)
-
+    res, s = solve_constraints(constraints)
+    
     if config.output:
         if config.output:
             with open(config.output, 'w', encoding='utf-8') as f:
