@@ -78,6 +78,10 @@ class Card(Formula):
 
 Clauses = list[list[int]]
 
+def atoms_of_clauses(cnf:Clauses) -> set[int]:
+  """Returns the set of atoms appearing in a CNF formula."""
+  return {abs(l) for clause in cnf for l in clause}
+
 next_int:int = 1 # global variable to generate unique variable names
 variables:dict[Any,int] = {} # maps variable names to integers
 variables_inv:dict[int,Any] = {} # inverse of variables; maps integers to variable names

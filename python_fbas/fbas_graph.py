@@ -308,16 +308,23 @@ class FBASGraph:
                 return frozenset([v for v in closure if v in self.validators])
             closure |= new
 
-    def restrict_to_reachable(self, v: str) -> 'FBASGraph':
+    def project(self, vs: Collection) -> 'FBASGraph':
         """
-        Returns a new fbas that only contains what's reachable from v.
+        Returns a new fbas that only contains the validators in vs.
         """
-        reachable = set(nx.descendants(self.graph, v)) | {v}
+        assert set(vs) <= self.validators
+        reachable = set.union(*[set(nx.descendants(self.graph, v)) | {v} for v in vs])
         fbas = copy(self)
         fbas.graph = nx.subgraph(self.graph, reachable)
         fbas.validators = reachable & self.validators
         fbas.qsets = {k: v for k, v in self.qsets.items() if k in reachable}
         return fbas
+
+    def restrict_to_reachable(self, v: str) -> 'FBASGraph':
+        """
+        Returns a new fbas that only contains what's reachable from v.
+        """
+        return self.project({v})
     
     # Fast heuristic checks:
 
