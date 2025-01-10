@@ -49,6 +49,12 @@ To check whether the current Stellar network, according to data from [stellarbea
 python-fbas --fbas=stellarbeat check-intersection
 ```
 
+To determine what the top-tier (i.e. the union of all minimal quorums) is:
+```
+python-fbas --fbas=stellarbeat top-tier
+```
+This assumes that the FBAS has quorum intersection.
+
 To determine the minimal number of nodes that, if corrupted, can split the network:
 ```
 python-fbas --fbas=stellarbeat min-splitting-set

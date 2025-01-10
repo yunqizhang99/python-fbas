@@ -423,9 +423,10 @@ def min_history_loss_critical_set(fbas: FBASGraph) -> Tuple[Collection[str], Col
         logging.info("Quorum: %s", [fbas.with_name(v) for v in quorum])
         return (min_critical, quorum)
     
-def find_min_quorum(fbas: FBASGraph) -> Collection[str]:
+def find_min_quorum(fbas: FBASGraph, not_subset_of = None) -> Collection[str]:
     """
     Find a minimal quorum in the FBAS graph using pyqbf.
+    If not_subset_of is a set of validators, then the quorum should contain at least one validator outside this set.
     """
 
     # First, find all sccs that contain at least one quorum:
@@ -434,7 +435,7 @@ def find_min_quorum(fbas: FBASGraph) -> Collection[str]:
     if not sccs:
         logging.info("Found strongly connected components in the FBAS graph.")
         return []
-    # Keep only the sccs  that contain at least one quorum:
+    # Keep only the sccs that contain at least one quorum:
     sccs = [scc for scc in sccs if contains_quorum(set(scc) & fbas.validators, fbas)]
     if len(sccs) > 1:
         logging.warning("There are disjoint quorums")
@@ -447,7 +448,7 @@ def find_min_quorum(fbas: FBASGraph) -> Collection[str]:
     fbas = fbas.project(scc & fbas.validators)
 
     if not fbas.validators:
-        logging.info("The FBAS is empty!")
+        logging.info("The projected FBAS is empty!")
         return []
 
     quorum_tag:int = 1
@@ -470,6 +471,9 @@ def find_min_quorum(fbas: FBASGraph) -> Collection[str]:
 
     # The set 'A' is a quorum in the scc:
     qa_constraints:list[Formula] = quorum_constraints_('A')
+    # it contains at least one validator outside not_subset_of:
+    if not_subset_of:
+        qa_constraints += [Or(*[in_quorum('A', n) for n in fbas.validators & set(scc) if n not in not_subset_of])]
 
     # If 'B' is a subset of 'A', then 'B' is not a quorum:
     qb_quorum = And(*quorum_constraints_('B'))
@@ -505,4 +509,10 @@ def top_tier(fbas: FBASGraph) -> Collection[str]:
     """
     Compute the top tier of the FBAS graph, i.e. the union of all minimal quorums.
     """
-    raise NotImplementedError("Not implemented yet")
+    top_tier_set:set[str] = set()
+    while True:
+        q = find_min_quorum(fbas, not_subset_of=top_tier_set)
+        if not q:
+            break
+        top_tier_set |= set(q)
+    return top_tier_set
