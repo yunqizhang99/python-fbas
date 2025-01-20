@@ -17,4 +17,4 @@ dependencies = [
 
 [project.scripts]
 python-fbas = "python_fbas.main:main"
-python-fbas-deprecated = "python_fbas.deprecated.main:main"
+constellation = "python_fbas.constellation.main:main"
