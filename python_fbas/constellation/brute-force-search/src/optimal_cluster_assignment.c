@@ -116,11 +116,11 @@ int main(int argc, char *argv[]) {
         }
     }
     // print the sorted multiplicity-threshold pairs:
-    for (size_t i = 1; i <= n; i++) {
-        printf("%ld: multiplicity %d, threshold %d\n", i, m[i], t[i]);
-    }
+    // for (size_t i = 1; i <= n; i++) {
+    //    printf("%ld: multiplicity %d, threshold %d\n", i, m[i], t[i]);
+    // }
     // next, generate the partitions
     generate_partitions(m, n, visit_partition);
-    printf("Invalid: %d\n", invalid);
-    printf("Best cost: %d\n", best_cost);
+    // printf("Invalid: %d\n", invalid);
+    // printf("Best cost: %d\n", best_cost);
 }

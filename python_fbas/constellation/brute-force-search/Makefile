@@ -5,7 +5,7 @@ LDFLAGS =
 
 # Source files for each program
 SRC1 = src/partitions.c
-SRC2 = src/multi-partitions.c src/constellation.c
+SRC2 = src/multi-partitions.c src/optimal_cluster_assignment.c
 
 # Generate object and dependency files
 OBJ1 = $(SRC1:.c=.o)
@@ -15,7 +15,7 @@ DEP2 = $(OBJ2:.o=.d)
 
 # Target binaries
 TARGET1 = partitions
-TARGET2 = constellation
+TARGET2 = optimal_cluster_assignment
 
 # Default target builds both programs
 all: $(TARGET1) $(TARGET2)
