@@ -33,6 +33,14 @@ void print_partition(int c[], int v[], int f[], int l) {
     printf("\n");
 }
 
+size_t part_size(int c[], int v[], int f[], int k) {
+    size_t size = 0;
+    for (int i = f[k]; i < f[k+1]; i++) {
+        size += v[i];
+    }
+    return size;
+}
+
 // Global variable to count the number of partitions found
 uint64_t num_partitions = 0;
 
@@ -44,7 +52,7 @@ void example_visit_partition(int c[], int v[], int f[], int l) {
 
 // we have a vector n[1],n[2],...,n[m]
 // equivalently, we have m elements, where each element 0 < i <= m has multiplicity n[i]
-void generate_partitions(int n[], size_t m, visit_func_t visit) {
+void generate_partitions(int n[], size_t m, visit_func_t visit, size_t min_size) {
 
     // number of elements:
     size_t N = 0;
@@ -60,6 +68,9 @@ void generate_partitions(int n[], size_t m, visit_func_t visit) {
     int l = 0; // current part
     int a = 0;
     int b = m; // current stack frame runs from a to b-1:
+    int j;
+    int k;
+    int x;
     f[0] = 0;
     f[1] = m;
     for (int j = 0; j < m; j++) {
@@ -70,9 +81,9 @@ void generate_partitions(int n[], size_t m, visit_func_t visit) {
 
     // Step M2
     m2:
-    int j = a;
-    int k = b;
-    int x = 0;
+    j = a;
+    k = b;
+    x = 0;
     while (j < b) {
         u[k] = u[j] - v[j];
         if (u[k] == 0) {
@@ -93,6 +104,7 @@ void generate_partitions(int n[], size_t m, visit_func_t visit) {
             j = j + 1;
         }
     }
+    // TODO if u is too small we should decrease v and restart in the same frame
 
     // Step M3
     m3:
@@ -122,13 +134,17 @@ void generate_partitions(int n[], size_t m, visit_func_t visit) {
         for (int k = j+1; k < b; k++) {
             v[k] = u[k];
         }
+        // backtrack if size limit reached:
+        if (part_size(c, v, f, l) < min_size) {
+            goto m6;
+        }
         goto m2;
     }
 
     // Step M6
     m6:
     if (l == 0) {
-        return; 
+        return;
     }
     else {
         l = l - 1;
@@ -138,20 +154,20 @@ void generate_partitions(int n[], size_t m, visit_func_t visit) {
     }
 }
 
-// int main(int argc, char *argv[]) {
-//     // the user is expected to provide a list of numbers which specifies the multiplicity of each element
-//     if (argc < 2) {
-//         fprintf(stderr, "Usage: %s <n1> <n2> ... <nm>\n", argv[0]);
-//         return 1;
-//     }
-//     // now parse the multiset, which is also a vector
-//     int m = argc - 1;
-//     int n[m+1]; // to match Knuth's 1-based indexing
-//     for (int i = 1; i <= m; i++) {
-//         n[i] = atoi(argv[i]);
-//     }
-//     generate_partitions(n, m, example_visit_partition);
-//     // print the number of partitions:
-//     printf("Number of partitions: %lu\n", num_partitions);
-//     return 0;
-// }
+/* int main(int argc, char *argv[]) { */
+    /* // the user is expected to provide a list of numbers which specifies the multiplicity of each element */
+    /* if (argc < 2) { */
+        /* fprintf(stderr, "Usage: %s <n1> <n2> ... <nm>\n", argv[0]); */
+        /* return 1; */
+    /* } */
+    /* // now parse the multiset, which is also a vector */
+    /* int m = argc - 1; */
+    /* int n[m+1]; // to match Knuth's 1-based indexing */
+    /* for (int i = 1; i <= m; i++) { */
+        /* n[i] = atoi(argv[i]); */
+    /* } */
+    /* generate_partitions(n, m, example_visit_partition, 1); */
+    /* // print the number of partitions: */
+    /* printf("Number of partitions: %lu\n", num_partitions); */
+    /* return 0; */
+/* } */

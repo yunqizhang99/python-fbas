@@ -90,11 +90,11 @@ void visit_partition(int c[], int v[], int f[], int l) {
 int main(int argc, char *argv[]) {
     // the user is expected to provide a list of pairs of numbers whose first element specifies a multiplicity and whose second element specifies a threshold value.
     // for example, 3 2 4 3 specifies that we have 3 organization with threshold 2 and 4 organizations with threshold 3
-    if (argc % 2 != 1 || argc < 3) {
-        printf("Usage: %s m1 t1 m2 t2 ...\n", argv[0]);
+    if (argc % 2 != 0 || argc < 4) {
+        printf("Usage: %s m1 t1 m2 t2 ... min_size \n", argv[0]);
         return 1;
     }
-    size_t n = (argc - 1) / 2;
+    size_t n = (argc - 2) / 2;
     int m[n+1];
     // update t to point to a size-(n+1) array
     t = (int *) malloc((n+1) * sizeof(int));
@@ -120,7 +120,7 @@ int main(int argc, char *argv[]) {
        printf("%ld: multiplicity %d, threshold %d\n", i, m[i], t[i]);
     }
     // next, generate the partitions
-    generate_partitions(m, n, visit_partition);
+    generate_partitions(m, n, visit_partition, atoi(argv[argc-1]));
     /* printf("Invalid: %d\n", invalid); */
     // printf("Best cost: %d\n", best_cost);
 }

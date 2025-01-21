@@ -11,6 +11,6 @@ typedef void (*visit_func_t)(int c[], int v[], int f[], int l);
 void print_partition(int c[], int v[], int f[], int l);
 
 // Function to generate and visit all partitions
-void generate_partitions(int n[], size_t m, visit_func_t visit);
+void generate_partitions(int n[], size_t m, visit_func_t visit, size_t min_size);
 
 #endif // MULTI_PARTITIONS_H
