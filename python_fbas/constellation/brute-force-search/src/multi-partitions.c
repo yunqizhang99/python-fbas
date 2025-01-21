@@ -112,6 +112,10 @@ void generate_partitions(int n[], size_t m, visit_func_t visit, size_t min_size)
         b = k;
         l = l + 1;
         f[l+1] = b;
+        // if u is too small, backtrack
+        if (part_size(c, u, f, l) < min_size) {
+            goto m6;
+        }
         goto m2;
     }
 
