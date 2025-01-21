@@ -104,7 +104,6 @@ void generate_partitions(int n[], size_t m, visit_func_t visit, size_t min_size)
             j = j + 1;
         }
     }
-    // TODO if u is too small we should decrease v and restart in the same frame
 
     // Step M3
     m3:
