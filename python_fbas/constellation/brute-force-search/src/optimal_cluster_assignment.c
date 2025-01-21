@@ -78,8 +78,8 @@ void visit_partition(int c[], int v[], int f[], int l) {
     int cst = cost(c, v, f, l);
     if (cst == INT_MAX)
         invalid++;
-    // print_partition(c, v, f, l);
-    // printf("Cost: %d\n", cst);
+    /* print_partition(c, v, f, l); */
+    /* printf("Cost: %d\n", cst); */
     if (cst < best_cost) {
         best_cost = cst;
         print_partition(c, v, f, l);
@@ -116,11 +116,11 @@ int main(int argc, char *argv[]) {
         }
     }
     // print the sorted multiplicity-threshold pairs:
-    // for (size_t i = 1; i <= n; i++) {
-    //    printf("%ld: multiplicity %d, threshold %d\n", i, m[i], t[i]);
-    // }
+    for (size_t i = 1; i <= n; i++) {
+       printf("%ld: multiplicity %d, threshold %d\n", i, m[i], t[i]);
+    }
     // next, generate the partitions
     generate_partitions(m, n, visit_partition);
-    // printf("Invalid: %d\n", invalid);
+    /* printf("Invalid: %d\n", invalid); */
     // printf("Best cost: %d\n", best_cost);
 }

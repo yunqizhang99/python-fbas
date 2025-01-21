@@ -19,13 +19,13 @@ def main():
 
     # Command for updating the data from Stellarbeat
     clusters_parser = subparsers.add_parser('compute-clusters', help="compute an assignment of organizations to clusters")
-    clusters_parser.add_argument('--thresholds', nargs='+', type=int, required=True, help="List of the form 't1 m1 t2 m2 ... tn mn' where each ti is a threshold and mi is the number of organizations that have this threshold")
+    clusters_parser.add_argument('--thresholds', nargs='+', type=int, required=True, help="List of the form 'm1 t1 m2 t2 ... mn tn' where each ti is a threshold and mi is the number of organizations that have this threshold")
     
     args = parser.parse_args()
 
     if args.command == 'compute-clusters':
         if len(args.thresholds) % 2 != 0 or len(args.thresholds) == 0:
-            logging.error("Thresholds and their multiplicity must be provided as a list 't1 m1 t2 m2 ... tn mn'")
+            logging.error("Thresholds and their multiplicity must be provided as a list 'm1 t1 m2 t2 ... mn tn'")
             sys.exit(1)
         clusters = subprocess.run(['optimal_cluster_assignment'] + [str(x) for x in args.thresholds], capture_output=True, text=True, check=True)
         print(clusters.stdout)
