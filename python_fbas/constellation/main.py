@@ -19,15 +19,19 @@ def main():
 
     # Command for updating the data from Stellarbeat
     clusters_parser = subparsers.add_parser('compute-clusters', help="compute an assignment of organizations to clusters")
-    clusters_parser.add_argument('--thresholds', nargs='+', type=int, required=True, help="List of the form 'm1 t1 m2 t2 ... mn tn' where each ti is a threshold and mi is the number of organizations that have this threshold")
+    clusters_parser.add_argument('--thresholds', nargs='+', type=int, required=True, help="List of the form 'm1 t1 m2 t2 ... mn tn' where each ti is a quorum-set threshold and mi is the number of organizations that have this threshold")
     
     args = parser.parse_args()
 
     if args.command == 'compute-clusters':
         if len(args.thresholds) % 2 != 0 or len(args.thresholds) == 0:
-            logging.error("Thresholds and their multiplicity must be provided as a list 'm1 t1 m2 t2 ... mn tn'")
+            logging.error("Quorum-set thresholds and their multiplicity must be provided as a list 'm1 t1 m2 t2 ... mn tn'")
             sys.exit(1)
-        clusters = subprocess.run(['optimal_cluster_assignment'] + [str(x) for x in args.thresholds], capture_output=True, text=True, check=True)
+        # sum all the multiplicities to get the total number of organizations:
+        num_orgs = sum(args.thresholds[i] for i in range(0, len(args.thresholds), 2))
+        overlay_thresholds = [num_orgs - args.thresholds[i + 1] + 1 for i in range(0, len(args.thresholds), 2)]
+        command_args = [args.thresholds[i] if i%2 == 0 else overlay_thresholds[int(i/2)] for i in range(0, len(args.thresholds))]
+        clusters = subprocess.run(['optimal_cluster_assignment'] + [str(x) for x in command_args], capture_output=True, text=True, check=True)
         print(clusters.stdout)
 
 if __name__ == "__main__":
