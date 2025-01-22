@@ -5,7 +5,6 @@ sure that the executable 'optimal_cluster_assignment' is in your PATH.
 
 import argparse
 import logging
-import os
 import sys
 import subprocess
 
@@ -14,10 +13,8 @@ def main():
     # specify log level with --log-level, with default WARNING:
     parser.add_argument('--log-level', default='WARNING', help="Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)")
 
-    # subcommands:
     subparsers = parser.add_subparsers(dest="command", help="sub-command help")
 
-    # Command for updating the data from Stellarbeat
     clusters_parser = subparsers.add_parser('compute-clusters', help="compute an assignment of organizations to clusters")
     clusters_parser.add_argument('--thresholds', nargs='+', type=int, required=True, help="List of the form 'm1 t1 m2 t2 ... mn tn' where each ti is a quorum-set threshold and mi is the number of organizations that have this threshold")
     clusters_parser.add_argument('--min-part-size', type=int, default=1, help="Minimum size of a cluster (default: 1)")
@@ -38,6 +35,10 @@ def main():
         command_args = [args.thresholds[i] if i%2 == 0 else overlay_thresholds[int(i/2)] for i in range(0, len(args.thresholds))] + [args.min_part_size]
         clusters = subprocess.run(['optimal_cluster_assignment'] + [str(x) for x in command_args], capture_output=True, text=True, check=True)
         print(clusters.stdout)
+    
+    # print help:
+    elif args.command is None:
+        parser.print_help()
 
 if __name__ == "__main__":
     main()
