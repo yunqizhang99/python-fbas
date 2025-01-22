@@ -171,3 +171,10 @@ def test_is_qset_sat():
     assert not fbas.is_qset_sat(n2, {'PK1','PK2','PK3'})
     assert fbas.is_qset_sat(n2, {'PK1','PK2','PK3','PK4'})
     assert not fbas.is_qset_sat(n2, {'PK1','PK2','PK5'})
+
+def test_project():
+    fbas = FBASGraph.from_json(get_validators_from_test_fbas('validators.json'))
+    from python_fbas.fbas_graph_analysis import top_tier as get_top_tier
+    top_tier = get_top_tier(fbas)
+    fbas = fbas.project(top_tier)
+    print(fbas.validators)
