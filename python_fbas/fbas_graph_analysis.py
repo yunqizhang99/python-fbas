@@ -423,29 +423,32 @@ def min_history_loss_critical_set(fbas: FBASGraph) -> Tuple[Collection[str], Col
         logging.info("Quorum: %s", [fbas.with_name(v) for v in quorum])
         return (min_critical, quorum)
     
-def find_min_quorum(fbas: FBASGraph, not_subset_of = None) -> Collection[str]:
+def find_min_quorum(fbas: FBASGraph, not_subset_of = None, restrict_to_scc = True) -> Collection[str]:
     """
     Find a minimal quorum in the FBAS graph using pyqbf.
     If not_subset_of is a set of validators, then the quorum should contain at least one validator outside this set.
     """
 
-    # First, find all sccs that contain at least one quorum:
-    sccs = [scc for scc in nx.strongly_connected_components(fbas.graph)
-            if any(fbas.threshold(v) > 0 for v in set(scc))]
-    if not sccs:
-        logging.info("Found strongly connected components in the FBAS graph.")
-        return []
-    # Keep only the sccs that contain at least one quorum:
-    sccs = [scc for scc in sccs if contains_quorum(set(scc) & fbas.validators, fbas)]
-    if len(sccs) > 1:
-        logging.warning("There are disjoint quorums")
-    if len(sccs) == 0:
-        logging.warning("Found no SCC that contains a quorum. This should not happen!")
-        return []
-    
-    # Now we have an scc that contains a quorum. Find a minimal quorum in it.
-    scc = sccs[0]
-    fbas = fbas.project(scc & fbas.validators)
+    if restrict_to_scc:
+        # First, find all sccs that contain at least one quorum:
+        sccs = [scc for scc in nx.strongly_connected_components(fbas.graph)
+                if any(fbas.threshold(v) > 0 for v in set(scc))]
+        if not sccs:
+            logging.info("Found strongly connected components in the FBAS graph.")
+            return []
+        # Keep only the sccs that contain at least one quorum:
+        sccs = [scc for scc in sccs if contains_quorum(set(scc) & fbas.validators, fbas)]
+        if len(sccs) > 1:
+            logging.warning("There are disjoint quorums")
+        if len(sccs) == 0:
+            logging.warning("Found no SCC that contains a quorum. This should not happen!")
+            return []
+        
+        # Now we have an scc that contains a quorum. Find a minimal quorum in it.
+        scc = sccs[0]
+        fbas = fbas.project(scc & fbas.validators)
+    else:
+        scc = fbas.validators
 
     if not fbas.validators:
         logging.info("The projected FBAS is empty!")
@@ -508,10 +511,29 @@ def find_min_quorum(fbas: FBASGraph, not_subset_of = None) -> Collection[str]:
 def top_tier(fbas: FBASGraph) -> Collection[str]:
     """
     Compute the top tier of the FBAS graph, i.e. the union of all minimal quorums.
+    TODO: could probably be improved.
     """
+
+    # First, find all sccs that contain at least one quorum:
+    sccs = [scc for scc in nx.strongly_connected_components(fbas.graph)
+            if any(fbas.threshold(v) > 0 for v in set(scc))]
+    if not sccs:
+        logging.info("Found strongly connected components in the FBAS graph.")
+        return []
+    # Keep only the sccs that contain at least one quorum:
+    sccs = [scc for scc in sccs if contains_quorum(set(scc) & fbas.validators, fbas)]
+    if len(sccs) > 1:
+        logging.warning("There are disjoint quorums")
+    if len(sccs) == 0:
+        logging.warning("Found no SCC that contains a quorum. This should not happen!")
+        return []    
+    # Project onto one of the sccs:
+    scc = sccs[0]
+    fbas = fbas.project(scc & fbas.validators)
+
     top_tier_set:set[str] = set()
     while True:
-        q = find_min_quorum(fbas, not_subset_of=top_tier_set)
+        q = find_min_quorum(fbas, not_subset_of=top_tier_set, restrict_to_scc=False)
         if not q:
             break
         top_tier_set |= set(q)

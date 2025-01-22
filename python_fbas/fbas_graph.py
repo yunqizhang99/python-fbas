@@ -313,6 +313,7 @@ class FBASGraph:
         Returns a new fbas that only contains the validators in vs.
         """
         assert set(vs) <= self.validators
+        assert vs
         reachable = set.union(*[set(nx.descendants(self.graph, v)) | {v} for v in vs])
         fbas = copy(self)
         fbas.graph = nx.subgraph(self.graph, reachable)
