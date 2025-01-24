@@ -290,7 +290,7 @@ class FBASGraph:
     
     def blocks(self, s : Collection, n : Any) -> bool:
         """
-        Returns True if and only if s blocks v.
+        Returns True if and only if s blocks n. Note that we are working at the graph level. This is not the same as v-blocking.
         """
         if self.threshold(n) <= 0:
             return False
