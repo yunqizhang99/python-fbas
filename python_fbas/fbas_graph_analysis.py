@@ -15,7 +15,7 @@ from pyqbf.formula import PCNF
 from pyqbf.solvers import Solver as QSolver
 from python_fbas.fbas_graph import FBASGraph
 from python_fbas.propositional_logic \
-    import And, Or, Implies, Atom, Formula, Card, Not, variables, variables_inv, to_cnf, atoms_of_clauses
+    import And, Or, Implies, Atom, Formula, Card, Not, equiv, variables, variables_inv, to_cnf, atoms_of_clauses
 import python_fbas.config as config
 
 def quorum_constraints(fbas: FBASGraph, make_atom: Callable[[str], Atom], domain=None) -> list[Formula]:
@@ -51,6 +51,7 @@ def contains_quorum(s:set[str], fbas: FBASGraph) -> bool:
     constraints += [Or(*[Atom(v) for v in s if fbas.threshold(v) >= 0])]
     # no validators outside s are in the quorum:
     constraints += [And(*[Not(Atom(v)) for v in fbas.validators if v not in s])]
+    # and the quorum constraints are satisfied:
     constraints += quorum_constraints(fbas, Atom)
 
     res, solver = solve_constraints(constraints)
@@ -538,3 +539,38 @@ def top_tier(fbas: FBASGraph) -> Collection[str]:
             break
         top_tier_set |= set(q)
     return top_tier_set
+
+def is_overlay_resilient(fbas: FBASGraph, overlay: nx.Graph):
+    """
+    Check if the overlay is FBA-resilient. That is, for every quorum Q, remove the complement of Q should not disconnect the overlay graph.
+    """
+    quorum_tag:int = 0
+    def in_quorum(v:str) -> Atom:
+        return Atom((quorum_tag, v))
+    constraints:list[Formula] = []
+    # the quorum is non-empty (contains a validator with a valid qset):
+    constraints += [Or(*[in_quorum(v) for v in fbas.validators if fbas.threshold(v) >= 0])]
+    # the quorum constraints are satisfied:
+    constraints += quorum_constraints(fbas, in_quorum)
+
+    # now we assert the graph is disconnected
+    reachable_tag:int = 1
+    def reachable(v) -> Atom:
+        return Atom((reachable_tag,v))
+    # some node is reachable:
+    constraints.append(Or(*[And(reachable(v),in_quorum(v)) for v in fbas.validators]))
+    # nodes outside the quorum are not reachable:
+    constraints += [Implies(reachable(v), in_quorum(v)) for v in fbas.validators]
+    # for every two nodes in the quorum and with an edge between each other, one is reachable iff the other is:
+    constraints += [Implies(And(in_quorum(v1),in_quorum(v2)), equiv(reachable(v1), reachable(v2))) for v1, v2 in overlay.edges() if v1 != v2]
+    # some node in the quorum is unreachable:
+    constraints.append(Or(*[And(Not(reachable(v)), in_quorum(v)) for v in fbas.validators]))
+
+    res, solver = solve_constraints(constraints)
+    if res:
+        model = solver.get_model()
+        q = [variables_inv[v][1] for v in set(model) & set(variables_inv.keys()) if variables_inv[v][0] == quorum_tag and variables_inv[v][1] in fbas.validators]
+        logging.info("Quorum %s is disconnected", q)
+    else:
+        logging.info("The overlay is FBA-resilient!")
+    return not res
