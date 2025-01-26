@@ -540,7 +540,7 @@ def top_tier(fbas: FBASGraph) -> Collection[str]:
         top_tier_set |= set(q)
     return top_tier_set
 
-def is_overlay_resilient(fbas: FBASGraph, overlay: nx.Graph):
+def is_overlay_resilient(fbas: FBASGraph, overlay: nx.Graph) -> bool:
     """
     Check if the overlay is FBA-resilient. That is, for every quorum Q, remove the complement of Q should not disconnect the overlay graph.
     """
@@ -574,3 +574,18 @@ def is_overlay_resilient(fbas: FBASGraph, overlay: nx.Graph):
     else:
         logging.info("The overlay is FBA-resilient!")
     return not res
+
+def num_not_blocked(fbas:FBASGraph, overlay:nx.Graph) -> int:
+    """
+    Returns the number of validators that are not blocked by their set of overlay neighbors.
+
+    If this returns 0 then we know that, for every quorum Q, if we remove Q from the overlay graph,
+    then each remaining validator still has at least one neighbor. Note that this does not imply
+    that the graph remains connected.
+    """
+    n = 0
+    for v in fbas.validators:
+        peers = list(overlay.neighbors(v)) if v in overlay else []
+        if not v in fbas.closure(peers):
+            n += 1
+    return n
