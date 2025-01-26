@@ -3,6 +3,9 @@ import networkx as nx
 from python_fbas.fbas_graph import FBASGraph
 
 def load_survey_graph(file_name) -> nx.Graph:
+    """
+    Load the overlay graph from Stellar survey data.
+    """
     with open(file_name, 'r', encoding='utf-8') as f:
         json_data = json.load(f)
     g = nx.Graph()
@@ -12,6 +15,59 @@ def load_survey_graph(file_name) -> nx.Graph:
         for peer in inbound | outbound:
             g.add_edge(v, peer)
     return g
+
+# Constellation handles a specific type of FBAS, where each validator requires agreement from a
+# threshold among a set of organizations, and each organization runs 3 nodes with a threshold of 2.
+def regular_fbas_to_fbas_graph(regular_fbas) -> FBASGraph:
+    """
+    Convert a regular FBAS to a FBASGraph. A regular FBAS consists of a set of organizations where
+    each organization O requires agreement from a threshold t_O among a set of organizations S_O.
+    """
+    assert isinstance(regular_fbas, dict)
+    for org in regular_fbas:
+        assert isinstance(org, str)
+        # org must be map to a pair (threshold, list of organizations):
+        assert isinstance(regular_fbas[org], tuple)
+        assert isinstance(regular_fbas[org][0], int)
+        assert regular_fbas[org][0] > 0
+        assert isinstance(regular_fbas[org][1], list)
+        for o in regular_fbas[org][1]:
+            assert isinstance(o, str)
+            assert o in regular_fbas
+
+    # now build the FBASGraph
+    def org_inner_qset(o):
+        return {'threshold': 2, 'validators': [f'{o}_1', f'{o}_2', f'{o}_3'], 'innerQuorumSets': []}
+    fbas_graph = FBASGraph()
+    for org in regular_fbas:
+        match regular_fbas[org]:
+            case (threshold, orgs):
+                qset = {'threshold': threshold, 'validators': [],'innerQuorumSets': [org_inner_qset(o) for o in orgs]}
+                for n in range(1, 4):
+                    fbas_graph.update_validator(f'{org}_{n}', qset)
+    return fbas_graph
+
+def regular_fbas_to_single_universe(regular_fbas:dict) -> dict:
+    """
+    Convert a regular FBAS to a single-universe regular FBAS.
+    """
+    # copy the regular fbas:
+    fbas:dict = regular_fbas.copy()
+    all_orgs = list(regular_fbas.keys())
+    for org in regular_fbas:
+        match regular_fbas[org]:
+            case (threshold, _):
+                # replace the list of organizations with a single universe:
+                fbas[org] = (threshold, all_orgs)
+    return fbas
+
+def constellation_overlay(regular_fbas:dict) -> nx.Graph:
+    """
+    Given a regular FBAS, return the Constellation overlay graph.
+    """
+    # first we transform the regular fbas into a single-universe regular fbas:
+    fbas = regular_fbas_to_single_universe(regular_fbas)
+    return nx.Graph()
 
 def symmetric_fbas_to_fbas_graph(symmetric_fbas) -> FBASGraph:
     """
