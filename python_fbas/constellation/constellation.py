@@ -2,6 +2,7 @@ import json
 import logging
 import subprocess
 from collections import defaultdict
+from itertools import combinations, combinations_with_replacement
 import networkx as nx
 from python_fbas.fbas_graph import FBASGraph
 
@@ -85,8 +86,10 @@ def parse_output(output:str) -> list[dict[int,int]]:
 
 def compute_clusters(regular_fbas:dict) -> list[set[str]]:
     """
-    Determines the Constellation clusters by calling the C implementation of the optimal partitioning algorithm.
+    Determines the Constellation clusters by calling the C implementation of the optimal-partitioning algorithm.
     The command 'optimal_cluster_assignment' must be in the PATH.
+
+    This only uses the threshold of each organization, not its universe (which is implicitely assumed to be all organizations).
     """
     n_orgs = len(regular_fbas.keys())
     threshold_multiplicity:dict[int,int] = defaultdict(int)
@@ -97,7 +100,11 @@ def compute_clusters(regular_fbas:dict) -> list[set[str]]:
     # build the command-line arguments:
     arg_pairs = [[threshold_multiplicity[t], t] for t in threshold_multiplicity.keys()]
     args = [x for sublist in arg_pairs for x in sublist] # flatten the list
-    args = args + [1] # add min cluster size to consider
+    # limit the number of clusters to 5:
+    max_clusters = 5
+    # if there are more than 20 organizations, limit the mimimum cluster size to n_orgs/6:
+    min_cluster_size = int(n_orgs/6)+1 if n_orgs > 20 else 1
+    args = args + [min_cluster_size, max_clusters]
     # obtain the optimal partition:
     output = subprocess.run(['optimal_cluster_assignment'] + [str(x) for x in args], capture_output=True, text=True, check=True)
     partition = parse_output(output.stdout) # TODO error handling
@@ -119,6 +126,35 @@ def compute_clusters(regular_fbas:dict) -> list[set[str]]:
             clusters[i] |= set(orgs[:n])
             orgs = orgs[n:]
     return clusters
+
+def clusters_to_overlay(clusters:list[set[str]]) -> nx.Graph:
+    """
+    Given a list of clusters, return the Constellation overlay graph.
+
+    Each organization O has 3 nodes O_0, O_1, and O_2 that are fully connected.
+    If two organizations are in different clusters, then each node in the first organization is connected to each node in the second organization.
+    If two organizations O and O' are in the same cluster, then O_i is connected to O'_{i+1 mod 3} and O'{i+2 mod 3}.
+    """
+    g = nx.Graph()
+    orgs = set.union(*clusters)
+    # map orgs to their cluster:
+    cluster_map = {org: i for i, cluster in enumerate(clusters) for org in cluster}
+    for org in orgs:
+        # first, connect the org's nodes in a complete graph:
+        # for all combinations i, j in {0, 1, 2} (where order does not matter), connect org_i to org_j:
+        for i, j in combinations(range(3), 2):
+            g.add_edge(f'{org}_{i}', f'{org}_{j}')
+        # now connect the org's nodes to the nodes of other organizations in the same cluster:
+        cluster = clusters[cluster_map[org]]
+        for other_org in cluster:
+            if org == other_org:
+                continue
+            if cluster_map[other_org] == cluster_map[org]:
+                # same cluster:
+                for i,j in combinations_with_replacement(range(3), 2):
+                    g.add_edge(f'{org}_{i}', f'{other_org}_{j}')
+    # now create the inter-cluster edges:
+    return g
 
 def constellation_overlay(regular_fbas:dict) -> nx.Graph:
     """
