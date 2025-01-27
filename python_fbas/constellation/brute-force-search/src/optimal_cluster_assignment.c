@@ -3,6 +3,8 @@
 #include <limits.h> // Include for INT_MAX
 #include "multi-partitions.h"
 
+// TODO: new cost function that sums achieved-degree/desired-degree
+
 #define max(a, b) ((a) < (b) ? (b) : (a))
 
 // array of thresholds, which must be set before calling cost
@@ -10,7 +12,7 @@
 int *t;
 
 // Given a partition, compute its cost, i.e. the number of edges in the resulting Constellation graph
-// If the thresholds are not satisfied, the cost is INT_MAX
+// If some threshold is not satisfied, the cost is INT_MAX
 // See multi-partitions.c for comments about what c, v, and f are
 int cost(int c[], int v[], int f[], int l) {
     // first compute the cardinality of each part:
