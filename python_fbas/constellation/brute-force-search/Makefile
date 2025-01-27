@@ -20,6 +20,14 @@ TARGET2 = optimal_cluster_assignment
 # Default target builds both programs
 all: $(TARGET1) $(TARGET2)
 
+install: $(TARGET2)
+	if [ -n "$(VIRTUAL_ENV)" ]; then \
+		cp $(TARGET2) $(VIRTUAL_ENV)/bin/; \
+		echo "Executable installed to $(VIRTUAL_ENV)/bin/"; \
+	else \
+		echo "No virtual environment detected! Aborting."; \
+	fi
+
 # Rule to build program1
 $(TARGET1): $(OBJ1)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
@@ -39,6 +47,5 @@ $(TARGET2): $(OBJ2)
 clean:
 	rm -f $(OBJ1) $(OBJ2) $(DEP1) $(DEP2) $(TARGET1) $(TARGET2)
 
-# Phony targets to avoid conflicts with files of the same name
-.PHONY: all clean
+.PHONY: all clean install
 

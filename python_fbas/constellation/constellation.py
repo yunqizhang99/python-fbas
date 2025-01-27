@@ -64,7 +64,7 @@ def regular_fbas_to_single_universe(regular_fbas:dict) -> dict:
                 fbas[org] = (threshold, all_orgs)
     return fbas
 
-def parse_output(output:str) -> list[dict]:
+def parse_output(output:str) -> list[dict[int,int]]:
     """
     Parse the output of the optimal partitioning algorithm.
 
@@ -83,23 +83,42 @@ def parse_output(output:str) -> list[dict]:
         result.append(d)
     return result
 
-def get_partitions(regular_fbas:dict) -> list[list[str]]:
+def compute_clusters(regular_fbas:dict) -> list[set[str]]:
     """
     Determines the Constellation clusters by calling the C implementation of the optimal partitioning algorithm.
     The command 'optimal_cluster_assignment' must be in the PATH.
     """
+    n_orgs = len(regular_fbas.keys())
     threshold_multiplicity:dict[int,int] = defaultdict(int)
     for org in regular_fbas:
         match regular_fbas[org]:
             case (t, _):
-                threshold_multiplicity[t] += 1
-    n_orgs = len(regular_fbas.keys())
-    blocking_threshold_multiplicity = {t: n_orgs - threshold_multiplicity[t] + 1 for t in threshold_multiplicity}
-    arg_pairs = [[blocking_threshold_multiplicity[t], t] for t in blocking_threshold_multiplicity.keys()]
+                threshold_multiplicity[n_orgs - t + 1] += 1
+    # build the command-line arguments:
+    arg_pairs = [[threshold_multiplicity[t], t] for t in threshold_multiplicity.keys()]
     args = [x for sublist in arg_pairs for x in sublist] # flatten the list
+    args = args + [1] # add min cluster size to consider
+    # obtain the optimal partition:
     output = subprocess.run(['optimal_cluster_assignment'] + [str(x) for x in args], capture_output=True, text=True, check=True)
-    logging.info(output.stdout.splitlines())
-    return []
+    partition = parse_output(output.stdout) # TODO error handling
+    # now assign organizations to the clusters
+    threshold_map:dict[int,list[str]] = {} # map each threshold to the set of organizations that have it
+    for org in regular_fbas:
+        match regular_fbas[org]:
+            case (t, _):
+                t = n_orgs - t + 1
+                if t not in threshold_map:
+                    threshold_map[t] = []
+                threshold_map[t].append(org)
+    # sort the blocking thresholds in decreasing order:
+    index_of_threshold = {t:i for i,t in enumerate(sorted(threshold_multiplicity.keys(), reverse=True))}
+    clusters:list[set[str]] = [set() for _ in partition] # start with empty cluters
+    for t, orgs in threshold_map.items():
+        for i, part in enumerate(partition):
+            n = part.get(index_of_threshold[t]+1, 0)
+            clusters[i] |= set(orgs[:n])
+            orgs = orgs[n:]
+    return clusters
 
 def constellation_overlay(regular_fbas:dict) -> nx.Graph:
     """
