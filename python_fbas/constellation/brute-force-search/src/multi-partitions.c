@@ -16,9 +16,22 @@
 
 // Function to print part k of a partition:
 void print_part(int c[], int v[], int f[], int k) {
-    for (int i = f[k]; i < f[k+1]; i++) {
-        for (int n = 0; n < v[i]; n++)
-            printf("%d", c[i]);
+    // size of the part:
+    size_t size = 0;
+    for (int i = f[k]; i < f[k+1]; i++)
+        size += v[i];
+    if (size == 1) {
+        printf("%d", c[f[k]]);
+    }
+    else {
+        for (int i = f[k]; i < f[k+1]-1; i++) {
+            for (int n = 0; n < v[i]; n++)
+                printf("%d.", c[i]);
+        };
+        int i = f[k+1]-1;
+        for (int n = 0; n < v[i]-1; n++)
+            printf("%d.", c[i]);
+        printf("%d", c[i]);
     }
 }
 

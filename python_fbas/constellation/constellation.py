@@ -1,4 +1,7 @@
 import json
+import logging
+import subprocess
+from collections import defaultdict
 import networkx as nx
 from python_fbas.fbas_graph import FBASGraph
 
@@ -60,6 +63,43 @@ def regular_fbas_to_single_universe(regular_fbas:dict) -> dict:
                 # replace the list of organizations with a single universe:
                 fbas[org] = (threshold, all_orgs)
     return fbas
+
+def parse_output(output:str) -> list[dict]:
+    """
+    Parse the output of the optimal partitioning algorithm.
+
+    A partition is represented by a string; for example, "1.1.2.2.2.3.5|1.4.4|2.2.3" means [{1:2, 2:3, 3:1, 5:1}, {1:1, 4:2}, {2:2, 3:1}].
+    In the output of the C program, the optimal partition appears on the last but 2 line.
+    """
+    # get the last but 2 line:
+    lines = output.splitlines()
+    partition = lines[-2]
+    partitions = partition.split('|')
+    result = []
+    for p in partitions:
+        d:dict[int,int] = defaultdict(int)
+        for x in p.split('.'):
+            d[int(x)] += 1
+        result.append(d)
+    return result
+
+def get_partitions(regular_fbas:dict) -> list[list[str]]:
+    """
+    Determines the Constellation clusters by calling the C implementation of the optimal partitioning algorithm.
+    The command 'optimal_cluster_assignment' must be in the PATH.
+    """
+    threshold_multiplicity:dict[int,int] = defaultdict(int)
+    for org in regular_fbas:
+        match regular_fbas[org]:
+            case (t, _):
+                threshold_multiplicity[t] += 1
+    n_orgs = len(regular_fbas.keys())
+    blocking_threshold_multiplicity = {t: n_orgs - threshold_multiplicity[t] + 1 for t in threshold_multiplicity}
+    arg_pairs = [[blocking_threshold_multiplicity[t], t] for t in blocking_threshold_multiplicity.keys()]
+    args = [x for sublist in arg_pairs for x in sublist] # flatten the list
+    output = subprocess.run(['optimal_cluster_assignment'] + [str(x) for x in args], capture_output=True, text=True, check=True)
+    logging.info(output.stdout.splitlines())
+    return []
 
 def constellation_overlay(regular_fbas:dict) -> nx.Graph:
     """

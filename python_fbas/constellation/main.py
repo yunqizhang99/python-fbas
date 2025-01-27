@@ -7,6 +7,7 @@ import argparse
 import logging
 import sys
 import subprocess
+from python_fbas.constellation.constellation import parse_output
 
 def main():
     parser = argparse.ArgumentParser(description="Constellation CLI")
@@ -35,6 +36,7 @@ def main():
         command_args = [args.thresholds[i] if i%2 == 0 else overlay_thresholds[int(i/2)] for i in range(0, len(args.thresholds))] + [args.min_part_size]
         clusters = subprocess.run(['optimal_cluster_assignment'] + [str(x) for x in command_args], capture_output=True, text=True, check=True)
         print(clusters.stdout)
+        print(parse_output(clusters.stdout))
     
     # print help:
     elif args.command is None:
