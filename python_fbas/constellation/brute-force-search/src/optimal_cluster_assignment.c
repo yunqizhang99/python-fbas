@@ -13,7 +13,7 @@ int *t;
 
 // Given a partition, compute its cost, i.e. the number of edges in the resulting Constellation graph
 // If some threshold is not satisfied, the cost is INT_MAX
-// See multi-partitions.c for comments about what c, v, and f are
+// See multi-partitions.c for comments about what c, v, f, and l are
 int cost(int c[], int v[], int f[], int l) {
     // first compute the cardinality of each part:
     int card[l+1];

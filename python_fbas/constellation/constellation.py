@@ -1,10 +1,43 @@
 import json
 import logging
 import subprocess
+import random
 from collections import defaultdict
-from itertools import combinations, combinations_with_replacement
+from itertools import combinations, combinations_with_replacement, product
+from typing import Optional
 import networkx as nx
 from python_fbas.fbas_graph import FBASGraph
+
+def load_regular_fbas_from_file(file_name:str) -> dict:
+    """
+    Load a regular FBAS from a file. The file must contain a JSON dictionary where each key is an
+    organization and the value is a pair consisting of an integer threshold and a list of
+    organizations.
+    """
+    with open(file_name, 'r', encoding='utf-8') as f:
+        return json.load(f)
+
+def single_universe_to_regular(fbas: dict[str,int]) -> dict[str,tuple[int,list[str]]]:
+    """
+    Convert a single-universe regular FBAS to a regular FBAS.
+    """
+    orgs = list(fbas.keys())
+    return {org: (fbas[org], orgs) for org in fbas}
+
+def load_single_universe_regular_fbas_from_file(file_name:str) -> dict:
+    """
+    Load a single-universe, regular FBAS from a file. The file must contain a JSON dictionary where
+    each key is an organization and the value is an integer threshold.
+    """
+    with open(file_name, 'r', encoding='utf-8') as f:
+        thresholds = json.load(f)
+    return single_universe_to_regular(thresholds)
+
+def random_single_universe_regular_fbas(n:int, low:int, high:int) -> dict:
+    """
+    Generate a random single-universe regular FBAS with n organizations and thresholds between low and high.
+    """
+    return {f"O_{i}": random.randint(low, high) for i in range(1, n+1)}
 
 def load_survey_graph(file_name) -> nx.Graph:
     """
@@ -51,20 +84,6 @@ def regular_fbas_to_fbas_graph(regular_fbas) -> FBASGraph:
                     fbas_graph.update_validator(f'{org}_{n}', qset)
     return fbas_graph
 
-def regular_fbas_to_single_universe(regular_fbas:dict) -> dict:
-    """
-    Convert a regular FBAS to a single-universe regular FBAS.
-    """
-    # copy the regular fbas:
-    fbas:dict = regular_fbas.copy()
-    all_orgs = list(regular_fbas.keys())
-    for org in regular_fbas:
-        match regular_fbas[org]:
-            case (threshold, _):
-                # replace the list of organizations with a single universe:
-                fbas[org] = (threshold, all_orgs)
-    return fbas
-
 def parse_output(output:str) -> list[dict[int,int]]:
     """
     Parse the output of the optimal partitioning algorithm.
@@ -84,7 +103,7 @@ def parse_output(output:str) -> list[dict[int,int]]:
         result.append(d)
     return result
 
-def compute_clusters(regular_fbas:dict) -> list[set[str]]:
+def compute_clusters(regular_fbas:dict, min_cluster_size:int = 1, max_num_clusters:Optional[int]=None) -> list[set[str]]:
     """
     Determines the Constellation clusters by calling the C implementation of the optimal-partitioning algorithm.
     The command 'optimal_cluster_assignment' must be in the PATH.
@@ -100,12 +119,15 @@ def compute_clusters(regular_fbas:dict) -> list[set[str]]:
     # build the command-line arguments:
     arg_pairs = [[threshold_multiplicity[t], t] for t in threshold_multiplicity.keys()]
     args = [x for sublist in arg_pairs for x in sublist] # flatten the list
-    # limit the number of clusters to 5:
-    max_clusters = 5
-    # if there are more than 20 organizations, limit the mimimum cluster size to n_orgs/6:
-    min_cluster_size = int(n_orgs/6)+1 if n_orgs > 20 else 1
-    args = args + [min_cluster_size, max_clusters]
+    # # if there are more than n_limit organizations, limit the mimimum cluster size to n_orgs/size_denom and the max number of clusters to max_clusters
+    # n_limit = 12
+    # size_denom = 5
+    # min_cluster_size = int(n_orgs/size_denom)+1 if n_orgs > n_limit else 1
+    # # limit the number of clusters to 4:
+    # max_clusters = 4 if n_orgs > n_limit else n_orgs
+    args = args + [min_cluster_size, max_num_clusters if max_num_clusters else n_orgs]
     # obtain the optimal partition:
+    logging.debug("calling optimal_cluster_assignment with args: %s", args)
     output = subprocess.run(['optimal_cluster_assignment'] + [str(x) for x in args], capture_output=True, text=True, check=True)
     partition = parse_output(output.stdout) # TODO error handling
     # now assign organizations to the clusters
@@ -151,9 +173,16 @@ def clusters_to_overlay(clusters:list[set[str]]) -> nx.Graph:
                 continue
             if cluster_map[other_org] == cluster_map[org]:
                 # same cluster:
-                for i,j in combinations_with_replacement(range(3), 2):
-                    g.add_edge(f'{org}_{i}', f'{other_org}_{j}')
+                for i in range(3):
+                    g.add_edge(f'{org}_{i}', f'{other_org}_{(i+1)%3}')
+                    g.add_edge(f'{org}_{i}', f'{other_org}_{(i+2)%3}')
     # now create the inter-cluster edges:
+    for c1, c2 in combinations(clusters, 2):
+        max_c,min_c = (list(c1),list(c2)) if len(c1) > len(c2) else (list(c2),list(c1))
+        for n, org in enumerate(max_c):
+            other = min_c[n%len(min_c)]
+            for i,j in product(range(3), range(3)):
+                g.add_edge(f'{org}_{i}', f'{other}_{j}')
     return g
 
 def constellation_overlay(regular_fbas:dict) -> nx.Graph:
@@ -161,34 +190,8 @@ def constellation_overlay(regular_fbas:dict) -> nx.Graph:
     Given a regular FBAS, return the Constellation overlay graph.
     """
     # first we transform the regular fbas into a single-universe regular fbas:
-    fbas = regular_fbas_to_single_universe(regular_fbas)
-    return nx.Graph()
+    clusters = compute_clusters(regular_fbas)
+    logging.info("got %s clusters", len(clusters))
+    return clusters_to_overlay(clusters)
 
-def symmetric_fbas_to_fbas_graph(symmetric_fbas) -> FBASGraph:
-    """
-    Convert a symmetric FBAS to a FBASGraph.
-    A symmetric FBAS is just a threshold and a list of organizations.
-    We assume that all organizations run 3 nodes.
-    """
-    match symmetric_fbas:
-        case (threshold, orgs):
-            if  not (isinstance(orgs, list) and isinstance(threshold, int) and threshold > 0 and threshold <= len(orgs)):
-                raise ValueError("Invalid symmetric FBAS format")
-            fbas_graph = FBASGraph()
-            def org_qset(o):
-                return {'threshold': 2, 'validators': [f'{o}_1', f'{o}_2', f'{o}_3'],'innerQuorumSets': []}
-            qset = {'threshold': threshold, 'validators': [],'innerQuorumSets': [org_qset(o) for o in orgs]}
-            for o in orgs:
-                for n in range(1, 4):
-                    fbas_graph.update_validator(f'{o}_{n}', qset)
-            return fbas_graph
-        case _:
-            raise ValueError("Invalid symmetric FBAS format")
-        
-def single_universe_fbas_to_fbas_graph(single_universe_fbas) -> FBASGraph:
-    """
-    Convert a single-universe FBAS to a FBASGraph.
-    A single universe FBAS is just list of organizations, each with its own threshold.
-    We assume that all organizations run 3 nodes.
-    """
-    raise NotImplementedError("single-universe FBAS to FBASGraph conversion is not yet implemented")
+    
