@@ -21,3 +21,10 @@ To compute the Constellation clusters when there are 200 organizations where 100
 ```
 constellation compute-clusters --thresholds 100 130 100 140 --max-num-clusters=5 --min-cluster-size=33
 ```
+
+As the number of different thresholds increases, the search space increases a log.
+To keep runtime low, we need to reduce the maximal number of clusters allowed and increase the minimal cluster size.
+For example:
+```
+constellation compute-clusters --thresholds 50 130 50 135 50 140 50 145 --max-num-clusters=3 --min-cluster-size=60
+```
