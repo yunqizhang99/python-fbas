@@ -7,6 +7,7 @@ from itertools import combinations, combinations_with_replacement, product
 from typing import Optional
 import networkx as nx
 from python_fbas.fbas_graph import FBASGraph
+import python_fbas.constellation.config as config
 
 def load_regular_fbas_from_file(file_name:str) -> dict:
     """
@@ -103,7 +104,7 @@ def parse_output(output:str) -> list[dict[int,int]]:
         result.append(d)
     return result
 
-def compute_clusters(regular_fbas:dict, min_cluster_size:int = 1, max_num_clusters:Optional[int]=None) -> list[set[str]]:
+def compute_clusters(regular_fbas:dict) -> list[set[str]]:
     """
     Determines the Constellation clusters by calling the C implementation of the optimal-partitioning algorithm.
     The command 'optimal_cluster_assignment' must be in the PATH.
@@ -125,7 +126,7 @@ def compute_clusters(regular_fbas:dict, min_cluster_size:int = 1, max_num_cluste
     # min_cluster_size = int(n_orgs/size_denom)+1 if n_orgs > n_limit else 1
     # # limit the number of clusters to 4:
     # max_clusters = 4 if n_orgs > n_limit else n_orgs
-    args = args + [min_cluster_size, max_num_clusters if max_num_clusters else n_orgs]
+    args = args + [config.min_cluster_size, config.max_num_clusters if config.max_num_clusters else n_orgs]
     # obtain the optimal partition:
     logging.debug("calling optimal_cluster_assignment with args: %s", args)
     output = subprocess.run(['optimal_cluster_assignment'] + [str(x) for x in args], capture_output=True, text=True, check=True)

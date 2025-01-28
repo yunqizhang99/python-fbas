@@ -1,5 +1,5 @@
 """
-Global config object for the python_fbas package.
+Global config variables for the python_fbas package.
 """
 from typing import Literal, Optional
 from pysat.solvers import SolverNames
