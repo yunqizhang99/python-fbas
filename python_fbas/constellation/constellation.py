@@ -9,30 +9,12 @@ import networkx as nx
 from python_fbas.fbas_graph import FBASGraph
 import python_fbas.constellation.config as config
 
-def load_regular_fbas_from_file(file_name:str) -> dict:
-    """
-    Load a regular FBAS from a file. The file must contain a JSON dictionary where each key is an
-    organization and the value is a pair consisting of an integer threshold and a list of
-    organizations.
-    """
-    with open(file_name, 'r', encoding='utf-8') as f:
-        return json.load(f)
-
 def single_universe_to_regular(fbas: dict[str,int]) -> dict[str,tuple[int,list[str]]]:
     """
     Convert a single-universe regular FBAS to a regular FBAS.
     """
     orgs = list(fbas.keys())
     return {org: (fbas[org], orgs) for org in fbas}
-
-def load_single_universe_regular_fbas_from_file(file_name:str) -> dict:
-    """
-    Load a single-universe, regular FBAS from a file. The file must contain a JSON dictionary where
-    each key is an organization and the value is an integer threshold.
-    """
-    with open(file_name, 'r', encoding='utf-8') as f:
-        thresholds = json.load(f)
-    return single_universe_to_regular(thresholds)
 
 def random_single_universe_regular_fbas(n:int, low:int, high:int) -> dict:
     """
@@ -104,19 +86,20 @@ def parse_output(output:str) -> list[dict[int,int]]:
         result.append(d)
     return result
 
-def compute_clusters(regular_fbas:dict) -> list[set[str]]:
+def compute_clusters(fbas:dict[str,int]) -> list[set[str]]:
     """
     Determines the Constellation clusters by calling the C implementation of the optimal-partitioning algorithm.
     The command 'optimal_cluster_assignment' must be in the PATH.
 
     This only uses the threshold of each organization, not its universe (which is implicitely assumed to be all organizations).
     """
-    n_orgs = len(regular_fbas.keys())
+    n_orgs = len(fbas.keys())
     threshold_multiplicity:dict[int,int] = defaultdict(int)
-    for org in regular_fbas:
-        match regular_fbas[org]:
-            case (t, _):
+    for org,t in fbas.items():
+            if isinstance(t, int):
                 threshold_multiplicity[n_orgs - t + 1] += 1
+            else:
+                raise ValueError("Expected an integer threshold")
     # build the command-line arguments:
     arg_pairs = [[threshold_multiplicity[t], t] for t in threshold_multiplicity.keys()]
     args = [x for sublist in arg_pairs for x in sublist] # flatten the list
@@ -133,13 +116,11 @@ def compute_clusters(regular_fbas:dict) -> list[set[str]]:
     partition = parse_output(output.stdout) # TODO error handling
     # now assign organizations to the clusters
     threshold_map:dict[int,list[str]] = {} # map each threshold to the set of organizations that have it
-    for org in regular_fbas:
-        match regular_fbas[org]:
-            case (t, _):
-                t = n_orgs - t + 1
-                if t not in threshold_map:
-                    threshold_map[t] = []
-                threshold_map[t].append(org)
+    for org,t in fbas.items():
+        t = n_orgs - t + 1
+        if t not in threshold_map:
+            threshold_map[t] = []
+        threshold_map[t].append(org)
     # sort the blocking thresholds in decreasing order:
     index_of_threshold = {t:i for i,t in enumerate(sorted(threshold_multiplicity.keys(), reverse=True))}
     clusters:list[set[str]] = [set() for _ in partition] # start with empty cluters
@@ -186,13 +167,11 @@ def clusters_to_overlay(clusters:list[set[str]]) -> nx.Graph:
                 g.add_edge(f'{org}_{i}', f'{other}_{j}')
     return g
 
-def constellation_overlay(regular_fbas:dict) -> nx.Graph:
+def constellation_overlay(fbas:dict[str,int]) -> nx.Graph:
     """
     Given a regular FBAS, return the Constellation overlay graph.
     """
     # first we transform the regular fbas into a single-universe regular fbas:
-    clusters = compute_clusters(regular_fbas)
+    clusters = compute_clusters(fbas)
     logging.info("got %s clusters", len(clusters))
     return clusters_to_overlay(clusters)
-
-    

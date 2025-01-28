@@ -28,3 +28,8 @@ For example:
 ```
 constellation compute-clusters --thresholds 50 130 50 135 50 140 50 145 --max-num-clusters=3 --min-cluster-size=60
 ```
+
+To compute the Constellation overlay graph give a single-universe, regular FBAS in JSON format:
+```
+constellation compute-overlay --fbas data/10_orgs_single_univ.json --output overlay.json
+```
