@@ -10,7 +10,7 @@ dependencies = [
     "pycryptosat==5.11.21",
     "pytest==8.3.3",
     "python-sat==1.8.dev13",
-    "requests==2.32.3"
+    "requests==2.32.3",
     "z3-solver==4.13.3.0"
 ]
 
