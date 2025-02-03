@@ -31,5 +31,5 @@ constellation compute-clusters --thresholds 50 130 50 135 50 140 50 145 --max-nu
 
 To compute the Constellation overlay graph give a single-universe, regular FBAS in JSON format:
 ```
-constellation compute-overlay --fbas data/10_orgs_single_univ.json --output overlay.json
+constellation compute-overlay --fbas data/11_orgs_single_univ.json --output overlay.json
 ```
