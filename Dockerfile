@@ -12,6 +12,7 @@ WORKDIR /app
 
 # Install dependencies inside venv
 RUN . venv/bin/activate && yes | pip install .
+RUN . venv/bin/activate && yes | pip install notebook
 
 # Run make install inside venv
 # RUN . venv/bin/activate && make install -C /app/python_fbas/constellation/brute-force-search
@@ -22,6 +23,8 @@ RUN chmod +x /docker-entrypoint.sh
 
 USER admin
 ENTRYPOINT ["/docker-entrypoint.sh"]
+
+CMD jupyter notebook python_fbas/constellation/notebook.ipynb --ip 0.0.0.0 --no-browser --allow-root
 
 # working version
 # FROM python:3.11.4
